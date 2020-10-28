@@ -24,6 +24,9 @@ var GameEvents = require('../../core/events');
  *  A pixel with an alpha of 1 in the masked Game Object will receive the same alpha as the
  * corresponding pixel in the mask.
  *
+ * Note: You cannot combine Bitmap Masks and Blend Modes on the same Game Object. You can, however,
+ * combine Geometry Masks and Blend Modes together.
+ *
  * The Bitmap Mask's location matches the location of its Game Object, not the location of the
  * masked objects. Moving or transforming the underlying Game Object will change the mask
  * (and affect the visibility of any masked objects), whereas moving or transforming a masked object
@@ -48,7 +51,7 @@ var BitmapMask = new Class({
 
     function BitmapMask (scene, renderable)
     {
-        var renderer = scene.sys.game.renderer;
+        var renderer = scene.sys.renderer;
 
         /**
          * A reference to either the Canvas or WebGL Renderer that this Mask is using.
@@ -146,36 +149,73 @@ var BitmapMask = new Class({
          */
         this.isStencil = false;
 
-        if (renderer && renderer.gl)
+        this.createMask();
+
+        scene.sys.game.events.on(GameEvents.CONTEXT_RESTORED, this.createMask, this);
+    },
+
+    /**
+     * Creates the WebGL Texture2D objects and Framebuffers required for this
+     * mask. If this mask has already been created, then `clearMask` is called first.
+     *
+     * @method Phaser.Display.Masks.BitmapMask#createMask
+     * @since 3.50.0
+     */
+    createMask: function ()
+    {
+        var renderer = this.renderer;
+
+        if (!renderer.gl)
         {
-            var width = renderer.width;
-            var height = renderer.height;
-            var pot = ((width & (width - 1)) === 0 && (height & (height - 1)) === 0);
-            var gl = renderer.gl;
-            var wrap = pot ? gl.REPEAT : gl.CLAMP_TO_EDGE;
-            var filter = gl.LINEAR;
-
-            this.mainTexture = renderer.createTexture2D(0, filter, filter, wrap, wrap, gl.RGBA, null, width, height);
-            this.maskTexture = renderer.createTexture2D(0, filter, filter, wrap, wrap, gl.RGBA, null, width, height);
-            this.mainFramebuffer = renderer.createFramebuffer(width, height, this.mainTexture, true);
-            this.maskFramebuffer = renderer.createFramebuffer(width, height, this.maskTexture, true);
-
-            scene.sys.game.events.on(GameEvents.CONTEXT_RESTORED, function (renderer)
-            {
-                var width = renderer.width;
-                var height = renderer.height;
-                var pot = ((width & (width - 1)) === 0 && (height & (height - 1)) === 0);
-                var gl = renderer.gl;
-                var wrap = pot ? gl.REPEAT : gl.CLAMP_TO_EDGE;
-                var filter = gl.LINEAR;
-
-                this.mainTexture = renderer.createTexture2D(0, filter, filter, wrap, wrap, gl.RGBA, null, width, height);
-                this.maskTexture = renderer.createTexture2D(0, filter, filter, wrap, wrap, gl.RGBA, null, width, height);
-                this.mainFramebuffer = renderer.createFramebuffer(width, height, this.mainTexture, true);
-                this.maskFramebuffer = renderer.createFramebuffer(width, height, this.maskTexture, true);
-
-            }, this);
+            return;
         }
+
+        if (this.mainTexture)
+        {
+            this.clearMask();
+        }
+
+        var width = renderer.width;
+        var height = renderer.height;
+        var pot = ((width & (width - 1)) === 0 && (height & (height - 1)) === 0);
+        var gl = renderer.gl;
+        var wrap = pot ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+        var filter = gl.LINEAR;
+
+        this.mainTexture = renderer.createTexture2D(0, filter, filter, wrap, wrap, gl.RGBA, null, width, height);
+        this.maskTexture = renderer.createTexture2D(0, filter, filter, wrap, wrap, gl.RGBA, null, width, height);
+        this.mainFramebuffer = renderer.createFramebuffer(width, height, this.mainTexture, true);
+        this.maskFramebuffer = renderer.createFramebuffer(width, height, this.maskTexture, true);
+    },
+
+    /**
+     * Deletes the `mainTexture` and `maskTexture` WebGL Textures and deletes
+     * the `mainFramebuffer` and `maskFramebuffer` too, nulling all references.
+     *
+     * This is called when this mask is destroyed, or if you try to creat a new
+     * mask from this object when one is already set.
+     *
+     * @method Phaser.Display.Masks.BitmapMask#clearMask
+     * @since 3.50.0
+     */
+    clearMask: function ()
+    {
+        var renderer = this.renderer;
+
+        if (!renderer.gl || !this.mainTexture)
+        {
+            return;
+        }
+
+        renderer.deleteTexture(this.mainTexture);
+        renderer.deleteTexture(this.maskTexture);
+        renderer.deleteFramebuffer(this.mainFramebuffer);
+        renderer.deleteFramebuffer(this.maskFramebuffer);
+
+        this.mainTexture = null;
+        this.maskTexture = null;
+        this.mainFramebuffer = null;
+        this.maskFramebuffer = null;
     },
 
     /**
@@ -205,7 +245,7 @@ var BitmapMask = new Class({
      */
     preRenderWebGL: function (renderer, maskedObject, camera)
     {
-        renderer.pipelines.BitmapMaskPipeline.beginMask(this, maskedObject, camera);
+        renderer.pipelines.BITMAPMASK_PIPELINE.beginMask(this, maskedObject, camera);
     },
 
     /**
@@ -220,7 +260,7 @@ var BitmapMask = new Class({
      */
     postRenderWebGL: function (renderer, camera)
     {
-        renderer.pipelines.BitmapMaskPipeline.endMask(this, camera);
+        renderer.pipelines.BITMAPMASK_PIPELINE.endMask(this, camera);
     },
 
     /**
@@ -253,7 +293,7 @@ var BitmapMask = new Class({
 
     /**
      * Destroys this BitmapMask and nulls any references it holds.
-     * 
+     *
      * Note that if a Game Object is currently using this mask it will _not_ automatically detect you have destroyed it,
      * so be sure to call `clearMask` on any Game Object using it, before destroying it.
      *
@@ -262,22 +302,9 @@ var BitmapMask = new Class({
      */
     destroy: function ()
     {
+        this.clearMask();
+
         this.bitmapMask = null;
-
-        var renderer = this.renderer;
-
-        if (renderer && renderer.gl)
-        {
-            renderer.deleteTexture(this.mainTexture);
-            renderer.deleteTexture(this.maskTexture);
-            renderer.deleteFramebuffer(this.mainFramebuffer);
-            renderer.deleteFramebuffer(this.maskFramebuffer);
-        }
-
-        this.mainTexture = null;
-        this.maskTexture = null;
-        this.mainFramebuffer = null;
-        this.maskFramebuffer = null;
         this.prevFramebuffer = null;
         this.renderer = null;
     }

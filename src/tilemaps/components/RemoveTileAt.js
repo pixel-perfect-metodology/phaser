@@ -13,7 +13,6 @@ var CalculateFacesAt = require('./CalculateFacesAt');
  * collision information.
  *
  * @function Phaser.Tilemaps.Components.RemoveTileAt
- * @private
  * @since 3.0.0
  *
  * @param {integer} tileX - The x coordinate.
@@ -42,7 +41,7 @@ var RemoveTileAt = function (tileX, tileY, replaceWithNull, recalculateFaces, la
     }
     else
     {
-        layer.data[tileY][tileX] = (replaceWithNull) ? null : new Tile(layer, -1, tileX, tileY, tile.width, tile.height);
+        layer.data[tileY][tileX] = (replaceWithNull) ? null : new Tile(layer, -1, tileX, tileY, layer.tileWidth, layer.tileHeight);
     }
 
     //  Recalculate faces only if the removed tile was a colliding tile

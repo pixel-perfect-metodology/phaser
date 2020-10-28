@@ -4,14 +4,15 @@
  * @license      {@link https://opensource.org/licenses/MIT|MIT License}
  */
 
+var AssignTileProperties = require('./AssignTileProperties');
+var BuildTilesetIndex = require('./BuildTilesetIndex');
+var CONST = require('../../const');
 var Formats = require('../../Formats');
 var MapData = require('../../mapdata/MapData');
-var ParseTileLayers = require('./ParseTileLayers');
 var ParseImageLayers = require('./ParseImageLayers');
-var ParseTilesets = require('./ParseTilesets');
 var ParseObjectLayers = require('./ParseObjectLayers');
-var BuildTilesetIndex = require('./BuildTilesetIndex');
-var AssignTileProperties = require('./AssignTileProperties');
+var ParseTileLayers = require('./ParseTileLayers');
+var ParseTilesets = require('./ParseTilesets');
 
 /**
  * Parses a Tiled JSON object into a new MapData object.
@@ -32,12 +33,6 @@ var AssignTileProperties = require('./AssignTileProperties');
  */
 var ParseJSONTiled = function (name, json, insertNull)
 {
-    if (json.orientation !== 'orthogonal')
-    {
-        console.warn('Only orthogonal map types are supported in this version of Phaser');
-        return null;
-    }
-
     //  Map data will consist of: layers, objects, images, tilesets, sizes
     var mapData = new MapData({
         width: json.width,
@@ -45,7 +40,7 @@ var ParseJSONTiled = function (name, json, insertNull)
         name: name,
         tileWidth: json.tilewidth,
         tileHeight: json.tileheight,
-        orientation: json.orientation,
+        orientation: CONST.fromOrientationString(json.orientation),
         format: Formats.TILED_JSON,
         version: json.version,
         properties: json.properties,
@@ -53,10 +48,16 @@ var ParseJSONTiled = function (name, json, insertNull)
         infinite: json.infinite
     });
 
+    if (mapData.orientation === CONST.HEXAGONAL)
+    {
+        mapData.hexSideLength = json.hexsidelength;
+    }
+
     mapData.layers = ParseTileLayers(json, insertNull);
     mapData.images = ParseImageLayers(json);
 
     var sets = ParseTilesets(json);
+
     mapData.tilesets = sets.tilesets;
     mapData.imageCollections = sets.imageCollections;
 

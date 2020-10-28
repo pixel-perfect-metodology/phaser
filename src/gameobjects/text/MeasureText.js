@@ -9,7 +9,7 @@ var CanvasPool = require('../../display/canvas/CanvasPool');
 /**
  * Calculates the ascent, descent and fontSize of a given font style.
  *
- * @function Phaser.GameObjects.Text.MeasureText
+ * @function Phaser.GameObjects.MeasureText
  * @since 3.0.0
  *
  * @param {Phaser.GameObjects.TextStyle} textStyle - The TextStyle object to measure.
@@ -18,15 +18,28 @@ var CanvasPool = require('../../display/canvas/CanvasPool');
  */
 var MeasureText = function (textStyle)
 {
-    // @property {HTMLCanvasElement} canvas - The canvas element that the text is rendered.
     var canvas = CanvasPool.create(this);
-
-    // @property {HTMLCanvasElement} context - The context of the canvas element that the text is rendered to.
     var context = canvas.getContext('2d');
 
     textStyle.syncFont(canvas, context);
 
-    var width = Math.ceil(context.measureText(textStyle.testString).width * textStyle.baselineX);
+    var metrics = context.measureText(textStyle.testString);
+
+    if (metrics.hasOwnProperty('actualBoundingBoxAscent'))
+    {
+        var ascent = metrics.actualBoundingBoxAscent;
+        var descent = metrics.actualBoundingBoxDescent;
+
+        CanvasPool.remove(canvas);
+
+        return {
+            ascent: ascent,
+            descent: descent,
+            fontSize: ascent + descent
+        };
+    }
+
+    var width = Math.ceil(metrics.width * textStyle.baselineX);
     var baseline = width;
     var height = 2 * baseline;
 

@@ -1,6 +1,6 @@
 /**
  * @author       Richard Davey <rich@photonstorm.com>
- * @copyright    2019 Photon Storm Ltd.
+ * @copyright    2020 Photon Storm Ltd.
  * @license      {@link https://github.com/photonstorm/phaser/blob/master/license.txt|MIT License}
  */
 
@@ -12,28 +12,36 @@ var ScenePlugin = require('../../../src/plugins/ScenePlugin');
 var Spine = require('Spine');
 var SpineFile = require('./SpineFile');
 var SpineGameObject = require('./gameobject/SpineGameObject');
+var SpineContainer = require('./container/SpineContainer');
+var NOOP = require('../../../src/utils/NOOP');
+
+//  Plugin specific instance of the Spine Scene Renderer
+var sceneRenderer;
 
 /**
  * @classdesc
  * The Spine Plugin is a Scene based plugin that handles the creation and rendering of Spine Game Objects.
- * 
+ *
+ * Find more details about Spine itself at http://esotericsoftware.com/.
+ *
  * All rendering and object creation is handled via the official Spine Runtimes. This version of the plugin
- * uses the Spine 3.8.72 runtimes. Please note that due to the way the Spine runtimes use semver, you will
+ * uses the Spine 3.8.95 runtimes. Please note that due to the way the Spine runtimes use semver, you will
  * get breaking changes in point-releases. Therefore, files created in a different version of Spine may not
  * work as a result, without you first updating the runtimes and rebuilding the plugin.
- * 
- * You can find more details about Spine at http://esotericsoftware.com/.
- * 
+ *
+ * Esoteric themselves recommend that you freeze your Spine editor version against the runtime versions.
+ * You can find more information about this here: http://esotericsoftware.com/spine-settings#Version
+ *
  * Please note that you require a Spine license in order to use Spine Runtimes in your games.
- * 
+ *
  * You can install this plugin into your Phaser game by either importing it, if you're using ES6:
- * 
+ *
  * ```javascript
  * import * as SpinePlugin from './SpinePlugin.js';
  * ```
- * 
+ *
  * and then adding it to your Phaser Game configuration:
- * 
+ *
  * ```javascript
  * plugins: {
  *     scene: [
@@ -41,10 +49,10 @@ var SpineGameObject = require('./gameobject/SpineGameObject');
  *     ]
  * }
  * ```
- * 
+ *
  * If you're using ES5 then you can load the Spine Plugin in a Scene files payload, _within_ your
  * Game Configuration object, like this:
- * 
+ *
  * ```javascript
  * scene: {
  *     preload: preload,
@@ -56,42 +64,54 @@ var SpineGameObject = require('./gameobject/SpineGameObject');
  *     }
  * }
  * ```
- * 
+ *
  * Loading it like this allows you to then use commands such as `this.load.spine` from within the
  * same Scene. Alternatively, you can use the method `this.load.plugin` to load the plugin via the normal
  * Phaser Loader. However, doing so will not add it to the current Scene. It will be available from any
  * subsequent Scenes.
- * 
+ *
  * Assuming a default environment you access it from within a Scene by using the `this.spine` reference.
- * 
+ *
  * When this plugin is installed into a Scene it will add a Loader File Type, allowing you to load
  * Spine files directly, i.e.:
- * 
+ *
  * ```javascript
  * this.load.spine('stretchyman', 'stretchyman-pro.json', [ 'stretchyman-pma.atlas' ], true);
  * ```
- * 
- * It also installs a Game Object Factory method, allowing you to create Spine Game Objects:
- * 
+ *
+ * It also installs two Game Object Factory methods, allowing you to create Spine Game Objects
+ * and Spine Containers:
+ *
  * ```javascript
- * this.add.spine(512, 650, 'stretchyman')
+ * const man = this.add.spine(512, 650, 'stretchyman');
+ *
+ * const container = this.add.spineContainer();
+ *
+ * container.add(man);
  * ```
- * 
+ *
  * The first argument is the key which you used when importing the Spine data. There are lots of
  * things you can specify, such as the animation name, skeleton, slot attachments and more. Please
  * see the respective documentation and examples for further details.
- * 
+ *
  * Phaser expects the Spine data to be exported from the Spine application in a JSON format, not binary.
  * The associated atlas files are scanned for any texture files present in them, which are then loaded.
  * If you have exported your Spine data with preMultipliedAlpha set, then you should enable this in the
  * load arguments, or you may see black outlines around skeleton textures.
- * 
+ *
  * The Spine plugin is local to the Scene in which it is installed. This means a change to something,
  * such as the Skeleton Debug Renderer, in this Scene, will not impact the renderer in any other Scene.
  * The only exception to this is with the caches this plugin creates. Spine atlas and texture data are
  * stored in their own caches, which are global, meaning they're accessible from any Scene in your
  * game, regardless if the Scene loaded the Spine data or not.
- * 
+ *
+ * When destroying a Phaser Game instance, if you need to re-create it again on the same page without
+ * reloading, you must remember to remove the Spine Plugin as part of your tear-down process:
+ *
+ * ```javascript
+ * this.plugins.removeScenePlugin('SpinePlugin');
+ * ```
+ *
  * For details about the Spine Runtime API see http://esotericsoftware.com/spine-api-reference
  *
  * @class SpinePlugin
@@ -126,7 +146,7 @@ var SpinePlugin = new Class({
 
         /**
          * A custom cache that stores the Spine atlas data.
-         * 
+         *
          * This cache is global across your game, allowing you to access Spine data loaded from other Scenes,
          * no matter which Scene you are in.
          *
@@ -138,7 +158,7 @@ var SpinePlugin = new Class({
 
         /**
          * A custom cache that stores the Spine Textures.
-         * 
+         *
          * This cache is global across your game, allowing you to access Spine data loaded from other Scenes,
          * no matter which Scene you are in.
          *
@@ -178,7 +198,7 @@ var SpinePlugin = new Class({
 
         /**
          * The underlying WebGL context of the Phaser renderer.
-         * 
+         *
          * Only set if running in WebGL mode.
          *
          * @name SpinePlugin#gl
@@ -198,7 +218,9 @@ var SpinePlugin = new Class({
 
         /**
          * An instance of the Spine WebGL Scene Renderer.
-         * 
+         *
+         * There is only one instance of the Scene Renderer shared across the whole plugin.
+         *
          * Only set if running in WebGL mode.
          *
          * @name SpinePlugin#sceneRenderer
@@ -218,7 +240,7 @@ var SpinePlugin = new Class({
 
         /**
          * An instance of the Spine Skeleton Debug Renderer.
-         * 
+         *
          * Only set if running in WebGL mode.
          *
          * @name SpinePlugin#skeletonDebugRenderer
@@ -229,7 +251,7 @@ var SpinePlugin = new Class({
 
         /**
          * A reference to the Spine runtime.
-         * This is the runtime created by Esoteric Software
+         * This is the runtime created by Esoteric Software.
          *
          * @name SpinePlugin#plugin
          * @type {spine}
@@ -275,56 +297,99 @@ var SpinePlugin = new Class({
             this.getAtlas = this.getAtlasCanvas;
         }
 
+        //  Headless mode?
+        if (!this.renderer)
+        {
+            this.renderer = {
+                width: game.scale.width,
+                height: game.scale.height,
+                preRender: NOOP,
+                postRender: NOOP,
+                render: NOOP,
+                destroy: NOOP
+            };
+        }
+
         var _this = this;
 
         var add = function (x, y, key, animationName, loop)
         {
             var spineGO = new SpineGameObject(this.scene, _this, x, y, key, animationName, loop);
-    
+
             this.displayList.add(spineGO);
             this.updateList.add(spineGO);
-        
+
             return spineGO;
         };
 
         var make = function (config, addToScene)
         {
             if (config === undefined) { config = {}; }
-    
+
             var key = GetValue(config, 'key', null);
             var animationName = GetValue(config, 'animationName', null);
             var loop = GetValue(config, 'loop', false);
-    
+
             var spineGO = new SpineGameObject(this.scene, _this, 0, 0, key, animationName, loop);
-    
+
             if (addToScene !== undefined)
             {
                 config.add = addToScene;
             }
-    
+
             BuildGameObject(this.scene, spineGO, config);
-    
+
             //  Spine specific
             var skinName = GetValue(config, 'skinName', false);
-    
+
             if (skinName)
             {
                 spineGO.setSkinByName(skinName);
             }
-    
+
             var slotName = GetValue(config, 'slotName', false);
             var attachmentName = GetValue(config, 'attachmentName', null);
-    
+
             if (slotName)
             {
                 spineGO.setAttachment(slotName, attachmentName);
             }
-    
+
             return spineGO.refresh();
+        };
+
+        var addContainer = function (x, y, children)
+        {
+            var spineGO = new SpineContainer(this.scene, _this, x, y, children);
+
+            this.displayList.add(spineGO);
+
+            return spineGO;
+        };
+
+        var makeContainer = function (config, addToScene)
+        {
+            if (config === undefined) { config = {}; }
+
+            var x = GetValue(config, 'x', 0);
+            var y = GetValue(config, 'y', 0);
+            var children = GetValue(config, 'children', null);
+
+            var container = new SpineContainer(this.scene, _this, x, y, children);
+
+            if (addToScene !== undefined)
+            {
+                config.add = addToScene;
+            }
+
+            BuildGameObject(this.scene, container, config);
+
+            return container;
         };
 
         pluginManager.registerFileType('spine', this.spineFileCallback, scene);
         pluginManager.registerGameObject('spine', add, make);
+        pluginManager.registerGameObject('spineContainer', addContainer, makeContainer);
     },
 
     /**
@@ -351,6 +416,8 @@ var SpinePlugin = new Class({
 
         eventEmitter.once('shutdown', this.shutdown, this);
         eventEmitter.once('destroy', this.destroy, this);
+
+        this.game.events.once('destroy', this.gameDestroy, this);
     },
 
     /**
@@ -374,9 +441,7 @@ var SpinePlugin = new Class({
      */
     bootWebGL: function ()
     {
-        this.sceneRenderer = new Spine.webgl.SceneRenderer(this.renderer.canvas, this.gl, true);
-
-        //  Monkeypatch the Spine setBlendMode functions, or batching is destroyed
+        //  Monkeypatch the Spine setBlendMode functions, or batching is destroyed!
 
         var setBlendMode = function (srcBlend, dstBlend)
         {
@@ -395,11 +460,17 @@ var SpinePlugin = new Class({
             }
         };
 
-        this.sceneRenderer.batcher.setBlendMode = setBlendMode;
-        this.sceneRenderer.shapes.setBlendMode = setBlendMode;
+        if (!sceneRenderer)
+        {
+            sceneRenderer = new Spine.webgl.SceneRenderer(this.renderer.canvas, this.gl, true);
+            sceneRenderer.batcher.setBlendMode = setBlendMode;
+            sceneRenderer.shapes.setBlendMode = setBlendMode;
+        }
 
-        this.skeletonRenderer = this.sceneRenderer.skeletonRenderer;
-        this.skeletonDebugRenderer = this.sceneRenderer.skeletonDebugRenderer;
+        //  All share the same instance
+        this.sceneRenderer = sceneRenderer;
+        this.skeletonRenderer = sceneRenderer.skeletonRenderer;
+        this.skeletonDebugRenderer = sceneRenderer.skeletonDebugRenderer;
 
         this.temp1 = new Spine.webgl.Vector3(0, 0, 0);
         this.temp2 = new Spine.webgl.Vector3(0, 0, 0);
@@ -411,9 +482,9 @@ var SpinePlugin = new Class({
      *
      * @method SpinePlugin#getAtlasCanvas
      * @since 3.19.0
-     * 
+     *
      * @param {string} key - The key of the Spine Atlas to create.
-     * 
+     *
      * @return {spine.TextureAtlas} The Spine Texture Atlas, or undefined if the given key wasn't found.
      */
     getAtlasCanvas: function (key)
@@ -439,7 +510,7 @@ var SpinePlugin = new Class({
 
             atlas = new Spine.TextureAtlas(atlasEntry.data, function (path)
             {
-                return new Spine.canvas.CanvasTexture(textures.get(path).getSourceImage());
+                return new Spine.canvas.CanvasTexture(textures.get(atlasEntry.prefix + path).getSourceImage());
             });
         }
 
@@ -452,9 +523,9 @@ var SpinePlugin = new Class({
      *
      * @method SpinePlugin#getAtlasWebGL
      * @since 3.19.0
-     * 
+     *
      * @param {string} key - The key of the Spine Atlas to create.
-     * 
+     *
      * @return {spine.TextureAtlas} The Spine Texture Atlas, or undefined if the given key wasn't found.
      */
     getAtlasWebGL: function (key)
@@ -484,7 +555,7 @@ var SpinePlugin = new Class({
 
             atlas = new Spine.TextureAtlas(atlasEntry.data, function (path)
             {
-                return new Spine.webgl.GLTexture(gl, textures.get(path).getSourceImage(), false);
+                return new Spine.webgl.GLTexture(gl, textures.get(atlasEntry.prefix + path).getSourceImage(), false);
             });
         }
 
@@ -495,7 +566,7 @@ var SpinePlugin = new Class({
      * Adds a Spine Skeleton and Atlas file, or array of files, to the current load queue.
      *
      * You can call this method from within your Scene's `preload`, along with any other files you wish to load:
-     * 
+     *
      * ```javascript
      * function preload ()
      * {
@@ -510,21 +581,21 @@ var SpinePlugin = new Class({
      * The typical flow for a Phaser Scene is that you load assets in the Scene's `preload` method and then when the
      * Scene's `create` method is called you are guaranteed that all of those assets are ready for use and have been
      * loaded.
-     * 
+     *
      * If you call this from outside of `preload` then you are responsible for starting the Loader afterwards and monitoring
      * its events to know when it's safe to use the asset. Please see the Phaser.Loader.LoaderPlugin class for more details.
-     * 
+     *
      * Phaser expects the Spine data to be exported from the Spine application in a JSON format, not binary. The associated
      * atlas files are scanned for any texture files present in them, which are then loaded. If you have exported
      * your Spine data with preMultipliedAlpha set, then you should enable this in the arguments, or you may see black
      * outlines around skeleton textures.
-     * 
+     *
      * The key must be a unique String. It is used to add the file to the global Spine cache upon a successful load.
      * The key should be unique both in terms of files being loaded and files already present in the Spine cache.
      * Loading a file using a key that is already taken will result in a warning.
      *
      * Instead of passing arguments you can pass a configuration object, such as:
-     * 
+     *
      * ```javascript
      * this.load.spine({
      *     key: 'mainmenu',
@@ -533,9 +604,9 @@ var SpinePlugin = new Class({
      *     preMultipliedAlpha: true
      * });
      * ```
-     * 
+     *
      * If you need to load multiple Spine atlas files, provide them as an array:
-     * 
+     *
      * ```javascript
      * function preload ()
      * {
@@ -558,7 +629,7 @@ var SpinePlugin = new Class({
      * Note: The ability to load this type of file will only be available if the Spine Plugin has been built or loaded into Phaser.
      *
      * @method Phaser.Loader.LoaderPlugin#spine
-     * @fires Phaser.Loader.LoaderPlugin#addFileEvent
+     * @fires Phaser.Loader.LoaderPlugin#ADD
      * @since 3.19.0
      *
      * @param {(string|Phaser.Types.Loader.FileTypes.JSONFileConfig|Phaser.Types.Loader.FileTypes.JSONFileConfig[])} key - The key to use for this file, or a file configuration object, or array of them.
@@ -573,13 +644,13 @@ var SpinePlugin = new Class({
     spineFileCallback: function (key, jsonURL, atlasURL, preMultipliedAlpha, jsonXhrSettings, atlasXhrSettings)
     {
         var multifile;
-   
+
         if (Array.isArray(key))
         {
             for (var i = 0; i < key.length; i++)
             {
                 multifile = new SpineFile(this, key[i]);
-    
+
                 this.addFile(multifile.files);
             }
         }
@@ -589,23 +660,23 @@ var SpinePlugin = new Class({
 
             this.addFile(multifile.files);
         }
-        
+
         return this;
     },
 
     /**
      * Converts the given x and y screen coordinates into the world space of the given Skeleton.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#worldToLocal
      * @since 3.19.0
-     * 
+     *
      * @param {number} x - The screen space x coordinate to convert.
      * @param {number} y - The screen space y coordinate to convert.
      * @param {spine.Skeleton} skeleton - The Spine Skeleton to convert into.
      * @param {spine.Bone} [bone] - Optional bone of the Skeleton to convert into.
-     * 
+     *
      * @return {spine.Vector2} A Vector2 containing the translated point.
      */
     worldToLocal: function (x, y, skeleton, bone)
@@ -642,10 +713,10 @@ var SpinePlugin = new Class({
      *
      * @method SpinePlugin#getVector2
      * @since 3.19.0
-     * 
+     *
      * @param {number} x - The Vector x value.
      * @param {number} y - The Vector y value.
-     * 
+     *
      * @return {spine.Vector2} A Spine Vector2 based on the given values.
      */
     getVector2: function (x, y)
@@ -655,16 +726,16 @@ var SpinePlugin = new Class({
 
     /**
      * Returns a Spine Vector2 based on the given x, y and z values.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#getVector3
      * @since 3.19.0
-     * 
+     *
      * @param {number} x - The Vector x value.
      * @param {number} y - The Vector y value.
      * @param {number} z - The Vector z value.
-     * 
+     *
      * @return {spine.Vector2} A Spine Vector2 based on the given values.
      */
     getVector3: function (x, y, z)
@@ -674,14 +745,14 @@ var SpinePlugin = new Class({
 
     /**
      * Sets `drawBones` in the Spine Skeleton Debug Renderer.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#setDebugBones
      * @since 3.19.0
-     * 
+     *
      * @param {boolean} [value=true] - The value to set in the debug property.
-     * 
+     *
      * @return {this} This Spine Plugin.
      */
     setDebugBones: function (value)
@@ -695,14 +766,14 @@ var SpinePlugin = new Class({
 
     /**
      * Sets `drawRegionAttachments` in the Spine Skeleton Debug Renderer.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#setDebugRegionAttachments
      * @since 3.19.0
-     * 
+     *
      * @param {boolean} [value=true] - The value to set in the debug property.
-     * 
+     *
      * @return {this} This Spine Plugin.
      */
     setDebugRegionAttachments: function (value)
@@ -716,14 +787,14 @@ var SpinePlugin = new Class({
 
     /**
      * Sets `drawBoundingBoxes` in the Spine Skeleton Debug Renderer.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#setDebugBoundingBoxes
      * @since 3.19.0
-     * 
+     *
      * @param {boolean} [value=true] - The value to set in the debug property.
-     * 
+     *
      * @return {this} This Spine Plugin.
      */
     setDebugBoundingBoxes: function (value)
@@ -737,14 +808,14 @@ var SpinePlugin = new Class({
 
     /**
      * Sets `drawMeshHull` in the Spine Skeleton Debug Renderer.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#setDebugMeshHull
      * @since 3.19.0
-     * 
+     *
      * @param {boolean} [value=true] - The value to set in the debug property.
-     * 
+     *
      * @return {this} This Spine Plugin.
      */
     setDebugMeshHull: function (value)
@@ -758,14 +829,14 @@ var SpinePlugin = new Class({
 
     /**
      * Sets `drawMeshTriangles` in the Spine Skeleton Debug Renderer.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#setDebugMeshTriangles
      * @since 3.19.0
-     * 
+     *
      * @param {boolean} [value=true] - The value to set in the debug property.
-     * 
+     *
      * @return {this} This Spine Plugin.
      */
     setDebugMeshTriangles: function (value)
@@ -779,14 +850,14 @@ var SpinePlugin = new Class({
 
     /**
      * Sets `drawPaths` in the Spine Skeleton Debug Renderer.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#setDebugPaths
      * @since 3.19.0
-     * 
+     *
      * @param {boolean} [value=true] - The value to set in the debug property.
-     * 
+     *
      * @return {this} This Spine Plugin.
      */
     setDebugPaths: function (value)
@@ -800,14 +871,14 @@ var SpinePlugin = new Class({
 
     /**
      * Sets `drawSkeletonXY` in the Spine Skeleton Debug Renderer.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#setDebugSkeletonXY
      * @since 3.19.0
-     * 
+     *
      * @param {boolean} [value=true] - The value to set in the debug property.
-     * 
+     *
      * @return {this} This Spine Plugin.
      */
     setDebugSkeletonXY: function (value)
@@ -821,14 +892,14 @@ var SpinePlugin = new Class({
 
     /**
      * Sets `drawClipping` in the Spine Skeleton Debug Renderer.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#setDebugClipping
      * @since 3.19.0
-     * 
+     *
      * @param {boolean} [value=true] - The value to set in the debug property.
-     * 
+     *
      * @return {this} This Spine Plugin.
      */
     setDebugClipping: function (value)
@@ -842,14 +913,14 @@ var SpinePlugin = new Class({
 
     /**
      * Sets the given vertex effect on the Spine Skeleton Renderer.
-     * 
+     *
      * Only works in WebGL.
      *
      * @method SpinePlugin#setEffect
      * @since 3.19.0
-     * 
+     *
      * @param {spine.VertexEffect} [effect] - The vertex effect to set on the Skeleton Renderer.
-     * 
+     *
      * @return {this} This Spine Plugin.
      */
     setEffect: function (effect)
@@ -861,15 +932,15 @@ var SpinePlugin = new Class({
 
     /**
      * Creates a Spine Skeleton based on the given key and optional Skeleton JSON data.
-     * 
+     *
      * The Skeleton data should have already been loaded before calling this method.
      *
      * @method SpinePlugin#createSkeleton
      * @since 3.19.0
-     * 
+     *
      * @param {string} key - The key of the Spine skeleton data, as loaded by the plugin. If the Spine JSON contains multiple skeletons, reference them with a period, i.e. `set.spineBoy`.
      * @param {object} [skeletonJSON] - Optional Skeleton JSON data to use, instead of getting it from the cache.
-     * 
+     *
      * @return {(any|null)} This Spine Skeleton data object, or `null` if the key was invalid.
      */
     createSkeleton: function (key, skeletonJSON)
@@ -902,7 +973,7 @@ var SpinePlugin = new Class({
         var preMultipliedAlpha = atlasData.preMultipliedAlpha;
 
         var atlasLoader = new Spine.AtlasAttachmentLoader(atlas);
-        
+
         var skeletonJson = new Spine.SkeletonJson(atlasLoader);
 
         var data;
@@ -923,7 +994,7 @@ var SpinePlugin = new Class({
             var skeletonData = skeletonJson.readSkeletonData(data);
 
             var skeleton = new Spine.Skeleton(skeletonData);
-        
+
             return { skeletonData: skeletonData, skeleton: skeleton, preMultipliedAlpha: preMultipliedAlpha };
         }
         else
@@ -934,14 +1005,14 @@ var SpinePlugin = new Class({
 
     /**
      * Creates a new Animation State and Animation State Data for the given skeleton.
-     * 
+     *
      * The returned object contains two properties: `state` and `stateData` respectively.
      *
      * @method SpinePlugin#createAnimationState
      * @since 3.19.0
-     * 
+     *
      * @param {spine.Skeleton} skeleton - The Skeleton to create the Animation State for.
-     * 
+     *
      * @return {any} An object containing the Animation State and Animation State Data instances.
      */
     createAnimationState: function (skeleton)
@@ -955,17 +1026,17 @@ var SpinePlugin = new Class({
 
     /**
      * Returns the axis aligned bounding box (AABB) of the region and mesh attachments for the current pose.
-     * 
+     *
      * The returned object contains two properties: `offset` and `size`:
-     * 
+     *
      * `offset` - The distance from the skeleton origin to the bottom left corner of the AABB.
      * `size` - The width and height of the AABB.
      *
      * @method SpinePlugin#getBounds
      * @since 3.19.0
-     * 
+     *
      * @param {spine.Skeleton} skeleton - The Skeleton to get the bounds from.
-     * 
+     *
      * @return {any} The bounds object.
      */
     getBounds: function (skeleton)
@@ -980,7 +1051,7 @@ var SpinePlugin = new Class({
 
     /**
      * Internal handler for when the renderer resizes.
-     * 
+     *
      * Only called if running in WebGL.
      *
      * @method SpinePlugin#onResize
@@ -996,14 +1067,13 @@ var SpinePlugin = new Class({
 
         sceneRenderer.camera.position.x = viewportWidth / 2;
         sceneRenderer.camera.position.y = viewportHeight / 2;
-    
-        sceneRenderer.camera.viewportWidth = viewportWidth;
-        sceneRenderer.camera.viewportHeight = viewportHeight;
+
+        sceneRenderer.camera.setViewport(viewportWidth, viewportHeight);
     },
 
     /**
      * The Scene that owns this plugin is shutting down.
-     * 
+     *
      * We need to kill and reset all internal properties as well as stop listening to Scene events.
      *
      * @method SpinePlugin#shutdown
@@ -1024,7 +1094,7 @@ var SpinePlugin = new Class({
 
     /**
      * The Scene that owns this plugin is being destroyed.
-     * 
+     *
      * We need to shutdown and then kill off all external references.
      *
      * @method SpinePlugin#destroy
@@ -1035,14 +1105,6 @@ var SpinePlugin = new Class({
     {
         this.shutdown();
 
-        if (this.sceneRenderer)
-        {
-            this.sceneRenderer.dispose();
-        }
-
-        this.pluginManager.removeGameObject('spine', true, true);
-
-        this.pluginManager = null;
         this.game = null;
         this.scene = null;
         this.systems = null;
@@ -1051,39 +1113,66 @@ var SpinePlugin = new Class({
         this.spineTextures = null;
         this.json = null;
         this.textures = null;
-        this.sceneRenderer = null;
         this.skeletonRenderer = null;
         this.gl = null;
+    },
+
+    /**
+     * The Game that owns this plugin is being destroyed.
+     *
+     * Dispose of the Scene Renderer and remove the Game Objects.
+     *
+     * @method SpinePlugin#gameDestroy
+     * @private
+     * @since 3.50.0
+     */
+    gameDestroy: function ()
+    {
+        this.destroy();
+
+        if (sceneRenderer)
+        {
+            sceneRenderer.dispose();
+        }
+
+        this.sceneRenderer = null;
+        this.pluginManager = null;
+
+        this.pluginManager.removeGameObject('spine', true, true);
+        this.pluginManager.removeGameObject('spineContainer', true, true);
     }
 
 });
 
+SpinePlugin.SpineGameObject = SpineGameObject;
+SpinePlugin.SpineContainer = SpineContainer;
+
 /**
  * Creates a new Spine Game Object and adds it to the Scene.
- * 
+ *
  * The x and y coordinate given is used to set the placement of the root Spine bone, which can vary from
  * skeleton to skeleton. All rotation and scaling happens from the root bone placement. Spine Game Objects
  * do not have a Phaser origin.
- * 
+ *
  * If the Spine JSON file exported multiple Skeletons within it, then you can specify them by using a period
  * character in the key. For example, if you loaded a Spine JSON using the key `monsters` and it contains
  * multiple Skeletons, including one called `goblin` then you would use the key `monsters.goblin` to reference
  * that.
- * 
+ *
  * ```javascript
  * let jelly = this.add.spine(512, 550, 'jelly', 'jelly-think', true);
  * ```
- * 
+ *
  * The key is optional. If not passed here, you need to call `SpineGameObject.setSkeleton()` to use it.
- * 
+ *
  * The animation name is also optional and can be set later via `SpineGameObject.setAnimation`.
- * 
+ *
  * Should you wish for more control over the object creation, such as setting a slot attachment or skin
  * name, then use `SpinePlugin.make` instead.
  *
  * @method SpinePlugin#add
  * @since 3.19.0
- * 
+ *
  * @param {number} x - The horizontal position of this Game Object in the world.
  * @param {number} y - The vertical position of this Game Object in the world.
  * @param {string} [key] - The key of the Spine Skeleton this Game Object will use, as stored in the Spine Plugin.
@@ -1095,16 +1184,16 @@ var SpinePlugin = new Class({
 
 /**
  * Creates a new Spine Game Object from the given configuration file and optionally adds it to the Scene.
- * 
+ *
  * The x and y coordinate given is used to set the placement of the root Spine bone, which can vary from
  * skeleton to skeleton. All rotation and scaling happens from the root bone placement. Spine Game Objects
  * do not have a Phaser origin.
- * 
+ *
  * If the Spine JSON file exported multiple Skeletons within it, then you can specify them by using a period
  * character in the key. For example, if you loaded a Spine JSON using the key `monsters` and it contains
  * multiple Skeletons, including one called `goblin` then you would use the key `monsters.goblin` to reference
  * that.
- * 
+ *
  * ```javascript
  * let jelly = this.make.spine({
  *     x: 500, y: 500, key: 'jelly',

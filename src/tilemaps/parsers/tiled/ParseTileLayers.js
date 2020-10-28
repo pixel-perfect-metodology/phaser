@@ -5,11 +5,12 @@
  */
 
 var Base64Decode = require('./Base64Decode');
+var CONST = require('../../const');
+var CreateGroupLayer = require('./CreateGroupLayer');
 var GetFastValue = require('../../../utils/object/GetFastValue');
 var LayerData = require('../../mapdata/LayerData');
 var ParseGID = require('./ParseGID');
 var Tile = require('../../Tile');
-var CreateGroupLayer = require('./CreateGroupLayer');
 
 /**
  * Parses all tilemap layers in a Tiled JSON object into new LayerData objects.
@@ -117,6 +118,7 @@ var ParseTileLayers = function (json, insertNull)
         {
             var layerOffsetX = (GetFastValue(curl, 'startx', 0) + curl.x);
             var layerOffsetY = (GetFastValue(curl, 'starty', 0) + curl.y);
+
             layerData = new LayerData({
                 name: (curGroupState.name + curl.name),
                 x: (curGroupState.x + GetFastValue(curl, 'offsetx', 0) + layerOffsetX * json.tilewidth),
@@ -127,8 +129,14 @@ var ParseTileLayers = function (json, insertNull)
                 tileHeight: json.tileheight,
                 alpha: (curGroupState.opacity * curl.opacity),
                 visible: (curGroupState.visible && curl.visible),
-                properties: GetFastValue(curl, 'properties', {})
+                properties: GetFastValue(curl, 'properties', []),
+                orientation: CONST.fromOrientationString(json.orientation)
             });
+
+            if (layerData.orientation === CONST.HEXAGONAL)
+            {
+                layerData.hexSideLength = json.hexsidelength;
+            }
 
             for (var c = 0; c < curl.height; c++)
             {
@@ -159,8 +167,7 @@ var ParseTileLayers = function (json, insertNull)
                     //  index, x, y, width, height
                     if (gidInfo.gid > 0)
                     {
-                        tile = new Tile(layerData, gidInfo.gid, newOffsetX, newOffsetY, json.tilewidth,
-                            json.tileheight);
+                        tile = new Tile(layerData, gidInfo.gid, newOffsetX, newOffsetY, json.tilewidth, json.tileheight);
 
                         // Turning Tiled's FlippedHorizontal, FlippedVertical and FlippedAntiDiagonal
                         // propeties into flipX, flipY and rotation
@@ -200,9 +207,14 @@ var ParseTileLayers = function (json, insertNull)
                 tileHeight: json.tileheight,
                 alpha: (curGroupState.opacity * curl.opacity),
                 visible: (curGroupState.visible && curl.visible),
-                properties: GetFastValue(curl, 'properties', {})
+                properties: GetFastValue(curl, 'properties', []),
+                orientation: CONST.fromOrientationString(json.orientation)
             });
 
+            if (layerData.orientation === CONST.HEXAGONAL)
+            {
+                layerData.hexSideLength = json.hexsidelength;
+            }
             var row = [];
 
             //  Loop through the data field in the JSON.
@@ -213,8 +225,7 @@ var ParseTileLayers = function (json, insertNull)
                 //  index, x, y, width, height
                 if (gidInfo.gid > 0)
                 {
-                    tile = new Tile(layerData, gidInfo.gid, x, output.length, json.tilewidth,
-                        json.tileheight);
+                    tile = new Tile(layerData, gidInfo.gid, x, output.length, json.tilewidth, json.tileheight);
 
                     // Turning Tiled's FlippedHorizontal, FlippedVertical and FlippedAntiDiagonal
                     // propeties into flipX, flipY and rotation

@@ -8,13 +8,6 @@ var CONST = require('./const');
 var Extend = require('../../utils/object/Extend');
 
 /**
- * @callback ArcadePhysicsCallback
- *
- * @param {Phaser.GameObjects.GameObject} object1 - The first Body to separate.
- * @param {Phaser.GameObjects.GameObject} object2 - The second Body to separate.
- */
-
-/**
  * @namespace Phaser.Physics.Arcade
  */
 
@@ -26,11 +19,16 @@ var Arcade = {
     Components: require('./components'),
     Events: require('./events'),
     Factory: require('./Factory'),
+    GetOverlapX: require('./GetOverlapX'),
+    GetOverlapY: require('./GetOverlapY'),
+    SeparateX: require('./SeparateX'),
+    SeparateY: require('./SeparateY'),
     Group: require('./PhysicsGroup'),
     Image: require('./ArcadeImage'),
     Sprite: require('./ArcadeSprite'),
     StaticBody: require('./StaticBody'),
     StaticGroup: require('./StaticPhysicsGroup'),
+    Tilemap: require('./tilemap/'),
     World: require('./World')
 
 };

@@ -8,25 +8,22 @@ var Geom = require('../../geom/');
 var GetTilesWithin = require('./GetTilesWithin');
 var Intersects = require('../../geom/intersects/');
 var NOOP = require('../../utils/NOOP');
-var TileToWorldX = require('./TileToWorldX');
-var TileToWorldY = require('./TileToWorldY');
-var WorldToTileX = require('./WorldToTileX');
-var WorldToTileY = require('./WorldToTileY');
+var Vector2 = require('../../math/Vector2');
 
 var TriangleToRectangle = function (triangle, rect)
 {
     return Intersects.RectangleToTriangle(rect, triangle);
 };
 
-// Note: Could possibly be optimized by copying the shape and shifting it into tilemapLayer
-// coordinates instead of shifting the tiles.
+var point = new Vector2();
+var pointStart = new Vector2();
+var pointEnd = new Vector2();
 
 /**
  * Gets the tiles that overlap with the given shape in the given layer. The shape must be a Circle,
  * Line, Rectangle or Triangle. The shape should be in world coordinates.
  *
  * @function Phaser.Tilemaps.Components.GetTilesWithinShape
- * @private
  * @since 3.0.0
  *
  * @param {(Phaser.Geom.Circle|Phaser.Geom.Line|Phaser.Geom.Rectangle|Phaser.Geom.Triangle)} shape - A shape in world (pixel) coordinates
@@ -45,27 +42,56 @@ var GetTilesWithinShape = function (shape, filteringOptions, camera, layer)
 
     // intersectTest is a function with parameters: shape, rect
     var intersectTest = NOOP;
-    if (shape instanceof Geom.Circle) { intersectTest = Intersects.CircleToRectangle; }
-    else if (shape instanceof Geom.Rectangle) { intersectTest = Intersects.RectangleToRectangle; }
-    else if (shape instanceof Geom.Triangle) { intersectTest = TriangleToRectangle; }
-    else if (shape instanceof Geom.Line) { intersectTest = Intersects.LineToRectangle; }
+
+    switch (typeof(shape))
+    {
+        case Geom.Circle:
+        {
+            intersectTest = Intersects.CircleToRectangle;
+            break;
+        }
+
+        case Geom.Rectangle:
+        {
+            intersectTest = Intersects.RectangleToRectangle;
+            break;
+        }
+
+        case Geom.Triangle:
+        {
+            intersectTest = TriangleToRectangle;
+            break;
+        }
+
+        case Geom.Line:
+        {
+            intersectTest = Intersects.LineToRectangle;
+            break;
+        }
+    }
 
     // Top left corner of the shapes's bounding box, rounded down to include partial tiles
-    var xStart = WorldToTileX(shape.left, true, camera, layer);
-    var yStart = WorldToTileY(shape.top, true, camera, layer);
+    layer.tilemapLayer.worldToTileXY(shape.left, shape.top, true, pointStart, camera);
+
+    var xStart = pointStart.x;
+    var yStart = pointStart.y;
 
     // Bottom right corner of the shapes's bounding box, rounded up to include partial tiles
-    var xEnd = Math.ceil(WorldToTileX(shape.right, false, camera, layer));
-    var yEnd = Math.ceil(WorldToTileY(shape.bottom, false, camera, layer));
+    layer.tilemapLayer.worldToTileXY(shape.right, shape.bottom, true, pointEnd, camera);
+
+    var xEnd = Math.ceil(pointEnd.x);
+    var yEnd = Math.ceil(pointEnd.y);
 
     // Tiles within bounding rectangle of shape. Bounds are forced to be at least 1 x 1 tile in size
     // to grab tiles for shapes that don't have a height or width (e.g. a horizontal line).
     var width = Math.max(xEnd - xStart, 1);
     var height = Math.max(yEnd - yStart, 1);
+
     var tiles = GetTilesWithin(xStart, yStart, width, height, filteringOptions, layer);
 
     var tileWidth = layer.tileWidth;
     var tileHeight = layer.tileHeight;
+
     if (layer.tilemapLayer)
     {
         tileWidth *= layer.tilemapLayer.scaleX;
@@ -74,11 +100,16 @@ var GetTilesWithinShape = function (shape, filteringOptions, camera, layer)
 
     var results = [];
     var tileRect = new Geom.Rectangle(0, 0, tileWidth, tileHeight);
+
     for (var i = 0; i < tiles.length; i++)
     {
         var tile = tiles[i];
-        tileRect.x = TileToWorldX(tile.x, camera, layer);
-        tileRect.y = TileToWorldY(tile.y, camera, layer);
+
+        layer.tilemapLayer.tileToWorldXY(tile.x, tile.y, point, camera, layer);
+
+        tileRect.x = point.x;
+        tileRect.y = point.y;
+
         if (intersectTest(shape, tileRect))
         {
             results.push(tile);

@@ -38,7 +38,9 @@ var TextFile = new Class({
 
     function TextFile (loader, key, url, xhrSettings)
     {
+        var type = 'text';
         var extension = 'txt';
+        var cache = loader.cacheManager.text;
 
         if (IsPlainObject(key))
         {
@@ -48,11 +50,13 @@ var TextFile = new Class({
             url = GetFastValue(config, 'url');
             xhrSettings = GetFastValue(config, 'xhrSettings');
             extension = GetFastValue(config, 'extension', extension);
+            type = GetFastValue(config, 'type', type);
+            cache = GetFastValue(config, 'cache', cache);
         }
 
         var fileConfig = {
-            type: 'text',
-            cache: loader.cacheManager.text,
+            type: type,
+            cache: cache,
             extension: extension,
             responseType: 'text',
             key: key,
@@ -139,7 +143,7 @@ var TextFile = new Class({
  * It is available in the default build but can be excluded from custom builds.
  *
  * @method Phaser.Loader.LoaderPlugin#text
- * @fires Phaser.Loader.LoaderPlugin#addFileEvent
+ * @fires Phaser.Loader.LoaderPlugin#ADD
  * @since 3.0.0
  *
  * @param {(string|Phaser.Types.Loader.FileTypes.TextFileConfig|Phaser.Types.Loader.FileTypes.TextFileConfig[])} key - The key to use for this file, or a file configuration object, or array of them.

@@ -31,6 +31,7 @@ var Image = require('../../gameobjects/image/Image');
  * @extends Phaser.Physics.Arcade.Components.Gravity
  * @extends Phaser.Physics.Arcade.Components.Immovable
  * @extends Phaser.Physics.Arcade.Components.Mass
+ * @extends Phaser.Physics.Arcade.Components.Pushable
  * @extends Phaser.Physics.Arcade.Components.Size
  * @extends Phaser.Physics.Arcade.Components.Velocity
  * @extends Phaser.GameObjects.Components.Alpha
@@ -50,7 +51,7 @@ var Image = require('../../gameobjects/image/Image');
  * @param {Phaser.Scene} scene - The Scene to which this Game Object belongs. A Game Object can only belong to one Scene at a time.
  * @param {number} x - The horizontal position of this Game Object in the world.
  * @param {number} y - The vertical position of this Game Object in the world.
- * @param {string} texture - The key of the Texture this Game Object will use to render with, as stored in the Texture Manager.
+ * @param {(string|Phaser.Textures.Texture)} texture - The key, or instance of the Texture this Game Object will use to render with, as stored in the Texture Manager.
  * @param {(string|integer)} [frame] - An optional frame from the Texture this Game Object is rendering with.
  */
 var ArcadeImage = new Class({
@@ -68,6 +69,7 @@ var ArcadeImage = new Class({
         Components.Gravity,
         Components.Immovable,
         Components.Mass,
+        Components.Pushable,
         Components.Size,
         Components.Velocity
     ],

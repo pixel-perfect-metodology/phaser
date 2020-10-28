@@ -7,6 +7,8 @@
 var Actions = require('../../actions/');
 var Class = require('../../utils/Class');
 var Events = require('../events');
+var EventEmitter = require('eventemitter3');
+var GetAll = require('../../utils/array/GetAll');
 var GetFastValue = require('../../utils/object/GetFastValue');
 var GetValue = require('../../utils/object/GetValue');
 var IsPlainObject = require('../../utils/object/IsPlainObject');
@@ -24,6 +26,7 @@ var Sprite = require('../sprite/Sprite');
  *
  * @class Group
  * @memberof Phaser.GameObjects
+ * @extends Phaser.Events.EventEmitter
  * @constructor
  * @since 3.0.0
  * @param {Phaser.Scene} scene - The scene this group belongs to.
@@ -35,10 +38,14 @@ var Sprite = require('../sprite/Sprite');
  */
 var Group = new Class({
 
+    Extends: EventEmitter,
+
     initialize:
 
     function Group (scene, children, config)
     {
+        EventEmitter.call(this);
+
         //  They can pass in any of the following as the first argument:
 
         //  1) A single child
@@ -91,7 +98,7 @@ var Group = new Class({
          * @type {Phaser.Structs.Set.<Phaser.GameObjects.GameObject>}
          * @since 3.0.0
          */
-        this.children = new Set(children);
+        this.children = new Set();
 
         /**
          * A flag identifying this object as a group.
@@ -136,8 +143,7 @@ var Group = new Class({
         this.name = GetFastValue(config, 'name', '');
 
         /**
-         * Whether this group runs its {@link Phaser.GameObjects.Group#preUpdate} method
-         * (which may update any members).
+         * Whether this group runs its {@link Phaser.GameObjects.Group#preUpdate} method (which may update any members).
          *
          * @name Phaser.GameObjects.Group#active
          * @type {boolean}
@@ -236,10 +242,30 @@ var Group = new Class({
          */
         this.internalRemoveCallback = GetFastValue(config, 'internalRemoveCallback', null);
 
+        if (children)
+        {
+            this.addMultiple(children);
+        }
+
         if (config)
         {
             this.createMultiple(config);
         }
+
+        this.on(Events.ADDED_TO_SCENE, this.addedToScene, this);
+        this.on(Events.REMOVED_FROM_SCENE, this.removedFromScene, this);
+    },
+
+    //  Overrides Game Object method
+    addedToScene: function ()
+    {
+        this.scene.sys.updateList.add(this);
+    },
+
+    //  Overrides Game Object method
+    removedFromScene: function ()
+    {
+        this.scene.sys.updateList.remove(this);
     },
 
     /**
@@ -439,6 +465,13 @@ var Group = new Class({
         var stepScaleY = GetValue(options, 'setScale.stepY', 0);
 
         Actions.SetScale(entries, scaleX, scaleY, stepScaleX, stepScaleY);
+
+        var originX = GetValue(options, 'setOrigin.x', 0.5);
+        var originY = GetValue(options, 'setOrigin.y', originX);
+        var stepOriginX = GetValue(options, 'setOrigin.stepX', 0);
+        var stepOriginY = GetValue(options, 'setOrigin.stepY', 0);
+
+        Actions.SetOrigin(entries, originX, originY, stepOriginX, stepOriginY);
 
         var alpha = GetValue(options, 'setAlpha.value', 1);
         var stepAlpha = GetValue(options, 'setAlpha.step', 0);
@@ -727,6 +760,30 @@ var Group = new Class({
     getLength: function ()
     {
         return this.children.size;
+    },
+
+    /**
+     * Returns all children in this Group that match the given criteria based on the `property` and `value` arguments.
+     *
+     * For example: `getAll('visible', true)` would return only children that have their `visible` property set.
+     *
+     * Optionally, you can specify a start and end index. For example if the Group has 100 elements,
+     * and you set `startIndex` to 0 and `endIndex` to 50, it would return matches from only
+     * the first 50.
+     *
+     * @method Phaser.GameObjects.Group#getMatching
+     * @since 3.50.0
+     *
+     * @param {string} [property] - The property to test on each array element.
+     * @param {*} [value] - The value to test the property against. Must pass a strict (`===`) comparison check.
+     * @param {integer} [startIndex] - An optional start index to search from.
+     * @param {integer} [endIndex] - An optional end index to search to.
+     *
+     * @return {any[]} An array of matching Group members. The array will be empty if nothing matched.
+     */
+    getMatching: function (property, value, startIndex, endIndex)
+    {
+        return GetAll(this.children.entries, property, value, startIndex, endIndex);
     },
 
     /**
@@ -1104,6 +1161,42 @@ var Group = new Class({
     },
 
     /**
+     * Sets the `active` property of this Group.
+     * When active, this Group runs its `preUpdate` method.
+     *
+     * @method Phaser.GameObjects.Group#setActive
+     * @since 3.24.0
+     *
+     * @param {boolean} value - True if this Group should be set as active, false if not.
+     *
+     * @return {this} This Group object.
+     */
+    setActive: function (value)
+    {
+        this.active = value;
+
+        return this;
+    },
+
+    /**
+     * Sets the `name` property of this Group.
+     * The `name` property is not populated by Phaser and is presented for your own use.
+     *
+     * @method Phaser.GameObjects.Group#setName
+     * @since 3.24.0
+     *
+     * @param {string} value - The name to be given to this Group.
+     *
+     * @return {this} This Group object.
+     */
+    setName: function (value)
+    {
+        this.name = value;
+
+        return this;
+    },
+
+    /**
      * Sets the property as defined in `key` of each group member to the given value.
      *
      * @method Phaser.GameObjects.Group#propertyValueSet
@@ -1260,7 +1353,7 @@ var Group = new Class({
     /**
      * Iterate through the group members changing the position of each element to be that of the element that came before
      * it in the array (or after it if direction = 1)
-     * 
+     *
      * The first group member position is set to x/y.
      *
      * @method Phaser.GameObjects.Group#shiftPosition

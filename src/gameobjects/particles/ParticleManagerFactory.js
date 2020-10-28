@@ -15,7 +15,7 @@ var ParticleEmitterManager = require('./ParticleEmitterManager');
  * @method Phaser.GameObjects.GameObjectFactory#particles
  * @since 3.0.0
  *
- * @param {string} texture - The key of the Texture this Game Object will use to render with, as stored in the Texture Manager.
+ * @param {(string|Phaser.Textures.Texture)} texture - The key, or instance of the Texture this Game Object will use to render with, as stored in the Texture Manager.
  * @param {(string|integer|object)} [frame] - An optional frame from the Texture this Game Object is rendering with.
  * @param {Phaser.Types.GameObjects.Particles.ParticleEmitterConfig|Phaser.Types.GameObjects.Particles.ParticleEmitterConfig[]} [emitters] - Configuration settings for one or more emitters to create.
  *
@@ -23,18 +23,5 @@ var ParticleEmitterManager = require('./ParticleEmitterManager');
  */
 GameObjectFactory.register('particles', function (key, frame, emitters)
 {
-    var manager = new ParticleEmitterManager(this.scene, key, frame, emitters);
-
-    this.displayList.add(manager);
-    this.updateList.add(manager);
-
-    return manager;
+    return this.displayList.add(new ParticleEmitterManager(this.scene, key, frame, emitters));
 });
-
-//  When registering a factory function 'this' refers to the GameObjectFactory context.
-//
-//  There are several properties available to use:
-//
-//  this.scene - a reference to the Scene that owns the GameObjectFactory
-//  this.displayList - a reference to the Display List the Scene owns
-//  this.updateList - a reference to the Update List the Scene owns

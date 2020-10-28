@@ -4,11 +4,14 @@
  * @license      {@link https://opensource.org/licenses/MIT|MIT License}
  */
 
+var CONST = require('./const');
+var Extend = require('../utils/object/Extend');
+
 /**
  * @namespace Phaser.Tilemaps
  */
 
-module.exports = {
+var PhaserTilemaps = {
 
     Components: require('./components'),
     Parsers: require('./parsers'),
@@ -21,12 +24,18 @@ module.exports = {
     TilemapCreator: require('./TilemapCreator'),
     TilemapFactory: require('./TilemapFactory'),
     Tileset: require('./Tileset'),
+    TilemapLayer: require('./TilemapLayer'),
 
     LayerData: require('./mapdata/LayerData'),
     MapData: require('./mapdata/MapData'),
-    ObjectLayer: require('./mapdata/ObjectLayer'),
-
-    DynamicTilemapLayer: require('./dynamiclayer/DynamicTilemapLayer'),
-    StaticTilemapLayer: require('./staticlayer/StaticTilemapLayer')
+    ObjectLayer: require('./mapdata/ObjectLayer')
 
 };
+
+//   Merge in the consts
+
+PhaserTilemaps = Extend(false, PhaserTilemaps, CONST);
+
+//  Export it
+
+module.exports = PhaserTilemaps;

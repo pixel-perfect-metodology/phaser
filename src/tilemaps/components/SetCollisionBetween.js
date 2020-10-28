@@ -15,7 +15,6 @@ var SetLayerCollisionIndex = require('./SetLayerCollisionIndex');
  * enabled (true) or disabled (false).
  *
  * @function Phaser.Tilemaps.Components.SetCollisionBetween
- * @private
  * @since 3.0.0
  *
  * @param {integer} start - The first index of the tile to be set for collision.
@@ -32,15 +31,18 @@ var SetCollisionBetween = function (start, stop, collides, recalculateFaces, lay
     if (recalculateFaces === undefined) { recalculateFaces = true; }
     if (updateLayer === undefined) { updateLayer = true; }
 
-    if (start > stop) { return; }
+    if (start > stop)
+    {
+        return;
+    }
 
-    // Update the array of colliding indexes
+    //  Update the array of colliding indexes
     for (var index = start; index <= stop; index++)
     {
         SetLayerCollisionIndex(index, collides, layer);
     }
 
-    // Update the tiles
+    //  Update the tiles
     if (updateLayer)
     {
         for (var ty = 0; ty < layer.height; ty++)
@@ -48,7 +50,7 @@ var SetCollisionBetween = function (start, stop, collides, recalculateFaces, lay
             for (var tx = 0; tx < layer.width; tx++)
             {
                 var tile = layer.data[ty][tx];
-              
+
                 if (tile)
                 {
                     if (tile.index >= start && tile.index <= stop)

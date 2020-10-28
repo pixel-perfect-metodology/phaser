@@ -36,11 +36,16 @@ var JSONHash = function (texture, sourceIndex, json)
     texture.add('__BASE', sourceIndex, 0, 0, source.width, source.height);
 
     //  By this stage frames is a fully parsed Object
-    var frames = json['frames'];
+    var frames = json.frames;
     var newFrame;
 
     for (var key in frames)
     {
+        if (!frames.hasOwnProperty(key))
+        {
+            continue;
+        }
+
         var src = frames[key];
 
         //  The frame values are the exact coordinates to cut the frame out of the atlas from
@@ -63,6 +68,15 @@ var JSONHash = function (texture, sourceIndex, json)
         {
             newFrame.rotated = true;
             newFrame.updateUVsInverted();
+        }
+
+        var pivot = src.anchor || src.pivot;
+
+        if (pivot)
+        {
+            newFrame.customPivot = true;
+            newFrame.pivotX = pivot.x;
+            newFrame.pivotY = pivot.y;
         }
 
         //  Copy over any extra data

@@ -2,10 +2,7 @@
 
 const webpack = require('webpack');
 const UglifyJSPlugin = require('uglifyjs-webpack-plugin');
-const CleanWebpackPlugin = require('clean-webpack-plugin');
-
-const basePath = __dirname;
-const targetFolder = 'dist';
+const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 
 module.exports = {
     mode: 'production',
@@ -52,13 +49,12 @@ module.exports = {
             "typeof CANVAS_RENDERER": JSON.stringify(true),
             "typeof WEBGL_RENDERER": JSON.stringify(true),
             "typeof EXPERIMENTAL": JSON.stringify(false),
+            "typeof PLUGIN_3D": JSON.stringify(false),
             "typeof PLUGIN_CAMERA3D": JSON.stringify(false),
             "typeof PLUGIN_FBINSTANT": JSON.stringify(false),
             "typeof FEATURE_SOUND": JSON.stringify(true)
         }),
 
-        new CleanWebpackPlugin([targetFolder], {
-            root: basePath + '/../'
-        })
+        new CleanWebpackPlugin()
     ]
 };

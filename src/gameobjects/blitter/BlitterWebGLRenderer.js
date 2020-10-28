@@ -17,11 +17,10 @@ var Utils = require('../../renderer/webgl/Utils');
  *
  * @param {Phaser.Renderer.WebGL.WebGLRenderer} renderer - A reference to the current active WebGL renderer.
  * @param {Phaser.GameObjects.Blitter} src - The Game Object being rendered in this call.
- * @param {number} interpolationPercentage - Reserved for future use and custom pipelines.
  * @param {Phaser.Cameras.Scene2D.Camera} camera - The Camera that is rendering the Game Object.
  * @param {Phaser.GameObjects.Components.TransformMatrix} parentMatrix - This transform matrix is defined if the game object is nested
  */
-var BlitterWebGLRenderer = function (renderer, src, interpolationPercentage, camera, parentMatrix)
+var BlitterWebGLRenderer = function (renderer, src, camera, parentMatrix)
 {
     var list = src.getRenderList();
 
@@ -30,9 +29,7 @@ var BlitterWebGLRenderer = function (renderer, src, interpolationPercentage, cam
         return;
     }
 
-    var pipeline = this.pipeline;
-
-    renderer.setPipeline(pipeline, src);
+    var pipeline = renderer.pipelines.set(this.pipeline, src);
 
     var cameraScrollX = camera.scrollX * src.scrollFactorX;
     var cameraScrollY = camera.scrollY * src.scrollFactorY;
@@ -99,7 +96,7 @@ var BlitterWebGLRenderer = function (renderer, src, interpolationPercentage, cam
         //  Bind texture only if the Texture Source is different from before
         if (frame.sourceIndex !== prevTextureSourceIndex)
         {
-            pipeline.setTexture2D(frame.glTexture, 0);
+            var textureUnit = pipeline.setGameObject(src, frame);
 
             prevTextureSourceIndex = frame.sourceIndex;
         }
@@ -114,7 +111,7 @@ var BlitterWebGLRenderer = function (renderer, src, interpolationPercentage, cam
         }
 
         //  TL x/y, BL x/y, BR x/y, TR x/y
-        if (pipeline.batchQuad(tx0, ty0, tx0, ty1, tx1, ty1, tx1, ty0, frame.u0, frame.v0, frame.u1, frame.v1, tint, tint, tint, tint, tintEffect, frame.glTexture, 0))
+        if (pipeline.batchQuad(tx0, ty0, tx0, ty1, tx1, ty1, tx1, ty0, frame.u0, frame.v0, frame.u1, frame.v1, tint, tint, tint, tint, tintEffect, frame.glTexture, textureUnit))
         {
             prevTextureSourceIndex = -1;
         }

@@ -335,21 +335,28 @@ var Graphics = new Class({
      * @webglOnly
      * @since 3.12.0
      *
-     * @param {integer} topLeft - The tint being applied to the top-left of the Game Object.
-     * @param {integer} topRight - The tint being applied to the top-right of the Game Object.
-     * @param {integer} bottomLeft - The tint being applied to the bottom-left of the Game Object.
-     * @param {integer} bottomRight - The tint being applied to the bottom-right of the Game Object.
-     * @param {number} [alpha=1] - The fill alpha.
+     * @param {integer} topLeft - The top left fill color.
+     * @param {integer} topRight - The top right fill color.
+     * @param {integer} bottomLeft - The bottom left fill color.
+     * @param {integer} bottomRight - The bottom right fill color. Not used when filling triangles.
+     * @param {number} [alphaTopLeft=1] - The top left alpha value. If you give only this value, it's used for all corners.
+     * @param {number} [alphaTopRight=1] - The top right alpha value.
+     * @param {number} [alphaBottomLeft=1] - The bottom left alpha value.
+     * @param {number} [alphaBottomRight=1] - The bottom right alpha value.
      *
      * @return {this} This Game Object.
      */
-    fillGradientStyle: function (topLeft, topRight, bottomLeft, bottomRight, alpha)
+    fillGradientStyle: function (topLeft, topRight, bottomLeft, bottomRight, alphaTopLeft, alphaTopRight, alphaBottomLeft, alphaBottomRight)
     {
-        if (alpha === undefined) { alpha = 1; }
+        if (alphaTopLeft === undefined) { alphaTopLeft = 1; }
+        if (alphaTopRight === undefined) { alphaTopRight = alphaTopLeft; }
+        if (alphaBottomLeft === undefined) { alphaBottomLeft = alphaTopLeft; }
+        if (alphaBottomRight === undefined) { alphaBottomRight = alphaTopLeft; }
 
         this.commandBuffer.push(
             Commands.GRADIENT_FILL_STYLE,
-            alpha, topLeft, topRight, bottomLeft, bottomRight
+            alphaTopLeft, alphaTopRight, alphaBottomLeft, alphaBottomRight,
+            topLeft, topRight, bottomLeft, bottomRight
         );
 
         return this;
@@ -502,7 +509,7 @@ var Graphics = new Class({
 
     /**
      * Fill the current path.
-     * 
+     *
      * This is an alias for `Graphics.fillPath` and does the same thing.
      * It was added to match the CanvasRenderingContext 2D API.
      *
@@ -539,7 +546,7 @@ var Graphics = new Class({
 
     /**
      * Stroke the current path.
-     * 
+     *
      * This is an alias for `Graphics.strokePath` and does the same thing.
      * It was added to match the CanvasRenderingContext 2D API.
      *
@@ -804,12 +811,16 @@ var Graphics = new Class({
         this.beginPath();
         this.moveTo(x + tl, y);
         this.lineTo(x + width - tr, y);
+        this.moveTo(x + width - tr, y);
         this.arc(x + width - tr, y + tr, tr, -MATH_CONST.TAU, 0);
         this.lineTo(x + width, y + height - br);
+        this.moveTo(x + width, y + height - br);
         this.arc(x + width - br, y + height - br, br, 0, MATH_CONST.TAU);
         this.lineTo(x + bl, y + height);
+        this.moveTo(x + bl, y + height);
         this.arc(x + bl, y + height - bl, bl, MATH_CONST.TAU, Math.PI);
         this.lineTo(x, y + tl);
+        this.moveTo(x, y + tl);
         this.arc(x + tl, y + tl, tl, -Math.PI, -MATH_CONST.TAU);
         this.strokePath();
 
@@ -1034,7 +1045,7 @@ var Graphics = new Class({
      * Stroke the shape represented by the given array of points.
      *
      * Pass `closeShape` to automatically close the shape by joining the last to the first point.
-     * 
+     *
      * Pass `closePath` to automatically close the path before it is stroked.
      *
      * @method Phaser.GameObjects.Graphics#strokePoints
@@ -1081,7 +1092,7 @@ var Graphics = new Class({
      * Fill the shape represented by the given array of points.
      *
      * Pass `closeShape` to automatically close the shape by joining the last to the first point.
-     * 
+     *
      * Pass `closePath` to automatically close the path before it is filled.
      *
      * @method Phaser.GameObjects.Graphics#fillPoints
@@ -1218,7 +1229,7 @@ var Graphics = new Class({
      * Draw an arc.
      *
      * This method can be used to create circles, or parts of circles.
-     * 
+     *
      * Make sure you call `beginPath` before starting the arc unless you wish for the arc to automatically
      * close when filled or stroked.
      *
@@ -1336,10 +1347,10 @@ var Graphics = new Class({
 
     /**
      * Inserts a translation command into this Graphics objects command buffer.
-     * 
+     *
      * All objects drawn _after_ calling this method will be translated
      * by the given amount.
-     * 
+     *
      * This does not change the position of the Graphics object itself,
      * only of the objects drawn by it after calling this method.
      *
@@ -1363,10 +1374,10 @@ var Graphics = new Class({
 
     /**
      * Inserts a scale command into this Graphics objects command buffer.
-     * 
+     *
      * All objects drawn _after_ calling this method will be scaled
      * by the given amount.
-     * 
+     *
      * This does not change the scale of the Graphics object itself,
      * only of the objects drawn by it after calling this method.
      *
@@ -1390,10 +1401,10 @@ var Graphics = new Class({
 
     /**
      * Inserts a rotation command into this Graphics objects command buffer.
-     * 
+     *
      * All objects drawn _after_ calling this method will be rotated
      * by the given amount.
-     * 
+     *
      * This does not change the rotation of the Graphics object itself,
      * only of the objects drawn by it after calling this method.
      *
@@ -1447,6 +1458,10 @@ var Graphics = new Class({
      *
      * If `key` is a Canvas it will draw the texture to that canvas context. Note that it will NOT
      * automatically upload it to the GPU in WebGL mode.
+     *
+     * Please understand that the texture is created via the Canvas API of the browser, therefore some
+     * Graphics features, such as `fillGradientStyle`, will not appear on the resulting texture,
+     * as they're unsupported by the Canvas API.
      *
      * @method Phaser.GameObjects.Graphics#generateTexture
      * @since 3.0.0
@@ -1506,8 +1521,8 @@ var Graphics = new Class({
 
         if (ctx)
         {
-            // var GraphicsCanvasRenderer = function (renderer, src, interpolationPercentage, camera, parentMatrix, renderTargetCtx, allowClip)
-            this.renderCanvas(renderer, this, 0, Graphics.TargetCamera, null, ctx, false);
+            // var GraphicsCanvasRenderer = function (renderer, src, camera, parentMatrix, renderTargetCtx, allowClip)
+            this.renderCanvas(renderer, this, Graphics.TargetCamera, null, ctx, false);
 
             if (texture)
             {

@@ -15,7 +15,6 @@ var PutTileAt = require('./PutTileAt');
  * within the region tiles were changed.
  *
  * @function Phaser.Tilemaps.Components.PutTilesAt
- * @private
  * @since 3.0.0
  *
  * @param {(integer[]|integer[][]|Phaser.Tilemaps.Tile[]|Phaser.Tilemaps.Tile[][])} tile - A row (array) or grid (2D array) of Tiles or tile indexes to place.
@@ -26,8 +25,12 @@ var PutTileAt = require('./PutTileAt');
  */
 var PutTilesAt = function (tilesArray, tileX, tileY, recalculateFaces, layer)
 {
-    if (!Array.isArray(tilesArray)) { return null; }
     if (recalculateFaces === undefined) { recalculateFaces = true; }
+
+    if (!Array.isArray(tilesArray))
+    {
+        return null;
+    }
 
     // Force the input array to be a 2D array
     if (!Array.isArray(tilesArray[0]))
@@ -43,6 +46,7 @@ var PutTilesAt = function (tilesArray, tileX, tileY, recalculateFaces, layer)
         for (var tx = 0; tx < width; tx++)
         {
             var tile = tilesArray[ty][tx];
+
             PutTileAt(tile, tileX + tx, tileY + ty, false, layer);
         }
     }
@@ -55,4 +59,3 @@ var PutTilesAt = function (tilesArray, tileX, tileY, recalculateFaces, layer)
 };
 
 module.exports = PutTilesAt;
-

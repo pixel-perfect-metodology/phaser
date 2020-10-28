@@ -15,9 +15,19 @@ var IsPlainObject = require('../../utils/object/IsPlainObject');
  * @classdesc
  * An Arcade Physics Group object.
  *
- * All Game Objects created by or added to this Group will automatically be given dynamic Arcade Physics bodies, if they have no body.
+ * The primary use of a Physics Group is a way to collect together physics enable objects
+ * that share the same intrinsic structure into a single pool. They can they be easily
+ * compared against other Groups, or Game Objects.
  *
- * Its static counterpart is {@link Phaser.Physics.Arcade.StaticGroup}.
+ * All Game Objects created by, or added to this Group will automatically be given **dynamic**
+ * Arcade Physics bodies (if they have no body already) and the bodies will receive the
+ * Groups {@link Phaser.Physics.Arcade.Group#defaults default values}.
+ *
+ * You should not pass objects into this Group that should not receive a body. For example,
+ * do not add basic Geometry or Tilemap Layers into a Group, as they will not behave in the
+ * way you may expect. Groups should all ideally have objects of the same type in them.
+ *
+ * If you wish to create a Group filled with Static Bodies, please see {@link Phaser.Physics.Arcade.StaticGroup}.
  *
  * @class Group
  * @extends Phaser.GameObjects.Group
@@ -56,7 +66,7 @@ var PhysicsGroup = new Class({
         }
         else if (Array.isArray(children) && IsPlainObject(children[0]))
         {
-            //  children is an array of plain objects
+            //  children is an array of plain objects (i.e., configs)
             config = children[0];
 
             var _this = this;
@@ -66,6 +76,8 @@ var PhysicsGroup = new Class({
                 singleConfig.internalCreateCallback = _this.createCallbackHandler;
                 singleConfig.internalRemoveCallback = _this.removeCallbackHandler;
             });
+
+            children = null;
         }
         else
         {
@@ -110,6 +122,8 @@ var PhysicsGroup = new Class({
         /**
          * Default physics properties applied to Game Objects added to the Group or created by the Group. Derived from the `config` argument.
          *
+         * You can remove the default values by setting this property to `{}`.
+         *
          * @name Phaser.Physics.Arcade.Group#defaults
          * @type {Phaser.Types.Physics.Arcade.PhysicsGroupDefaults}
          * @since 3.0.0
@@ -131,6 +145,8 @@ var PhysicsGroup = new Class({
             setGravityY: GetFastValue(config, 'gravityY', 0),
             setFrictionX: GetFastValue(config, 'frictionX', 0),
             setFrictionY: GetFastValue(config, 'frictionY', 0),
+            setMaxVelocityX: GetFastValue(config, 'maxVelocityX', 10000),
+            setMaxVelocityY: GetFastValue(config, 'maxVelocityY', 10000),
             setVelocityX: GetFastValue(config, 'velocityX', 0),
             setVelocityY: GetFastValue(config, 'velocityY', 0),
             setAngularVelocity: GetFastValue(config, 'angularVelocity', 0),
@@ -139,11 +155,6 @@ var PhysicsGroup = new Class({
             setMass: GetFastValue(config, 'mass', 1),
             setImmovable: GetFastValue(config, 'immovable', false)
         };
-
-        if (Array.isArray(children))
-        {
-            config = null;
-        }
 
         Group.call(this, scene, children, config);
 

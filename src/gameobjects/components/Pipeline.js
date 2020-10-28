@@ -4,6 +4,8 @@
  * @license      {@link https://opensource.org/licenses/MIT|MIT License}
  */
 
+var PIPELINE_CONST = require('../../renderer/webgl/pipelines/const');
+
 /**
  * Provides methods used for setting the WebGL rendering pipeline of a Game Object.
  *
@@ -16,6 +18,8 @@ var Pipeline = {
 
     /**
      * The initial WebGL pipeline of this Game Object.
+     *
+     * If you call `resetPipeline` on this Game Object, the pipeline is reset to this default.
      *
      * @name Phaser.GameObjects.Components.Pipeline#defaultPipeline
      * @type {Phaser.Renderer.WebGL.WebGLPipeline}
@@ -37,29 +41,46 @@ var Pipeline = {
     pipeline: null,
 
     /**
+     * An object to store pipeline specific data in, to be read by the pipeline this Game Object uses.
+     *
+     * @name Phaser.GameObjects.Components.Pipeline#pipelineData
+     * @type {object}
+     * @webglOnly
+     * @since 3.50.0
+     */
+    pipelineData: {},
+
+    /**
      * Sets the initial WebGL Pipeline of this Game Object.
-     * This should only be called during the instantiation of the Game Object.
+     *
+     * This should only be called during the instantiation of the Game Object. After that, use `setPipeline`.
      *
      * @method Phaser.GameObjects.Components.Pipeline#initPipeline
      * @webglOnly
      * @since 3.0.0
      *
-     * @param {string} [pipelineName=TextureTintPipeline] - The name of the pipeline to set on this Game Object. Defaults to the Texture Tint Pipeline.
+     * @param {(string|Phaser.Renderer.WebGL.WebGLPipeline)} pipeline - Either the string-based name of the pipeline, or a pipeline instance to set.
      *
      * @return {boolean} `true` if the pipeline was set successfully, otherwise `false`.
      */
-    initPipeline: function (pipelineName)
+    initPipeline: function (pipeline)
     {
-        if (pipelineName === undefined) { pipelineName = 'TextureTintPipeline'; }
+        if (pipeline === undefined) { pipeline = PIPELINE_CONST.MULTI_PIPELINE; }
 
-        var renderer = this.scene.sys.game.renderer;
+        var renderer = this.scene.sys.renderer;
+        var pipelines = renderer.pipelines;
 
-        if (renderer && renderer.gl && renderer.hasPipeline(pipelineName))
+        if (pipelines)
         {
-            this.defaultPipeline = renderer.getPipeline(pipelineName);
-            this.pipeline = this.defaultPipeline;
+            var instance = pipelines.get(pipeline);
 
-            return true;
+            if (instance)
+            {
+                this.defaultPipeline = instance;
+                this.pipeline = instance;
+
+                return true;
+            }
         }
 
         return false;
@@ -72,18 +93,32 @@ var Pipeline = {
      * @webglOnly
      * @since 3.0.0
      *
-     * @param {string} pipelineName - The name of the pipeline to set on this Game Object.
+     * @param {(string|Phaser.Renderer.WebGL.WebGLPipeline)} pipeline - Either the string-based name of the pipeline, or a pipeline instance to set.
      *
      * @return {this} This Game Object instance.
      */
-    setPipeline: function (pipelineName)
+    setPipeline: function (pipeline, pipelineData)
     {
-        var renderer = this.scene.sys.game.renderer;
+        var renderer = this.scene.sys.renderer;
+        var pipelines = renderer.pipelines;
 
-        if (renderer && renderer.gl && renderer.hasPipeline(pipelineName))
+        if (pipelines)
         {
-            this.pipeline = renderer.getPipeline(pipelineName);
+            var instance = pipelines.get(pipeline);
+
+            if (instance)
+            {
+                this.pipeline = instance;
+                this.pipelineData = pipelineData;
+            }
         }
+
+        return this;
+    },
+
+    setPipelineData: function (key, value)
+    {
+        this.pipelineData[key] = value;
 
         return this;
     },

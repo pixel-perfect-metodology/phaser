@@ -5,8 +5,9 @@
  */
 
 var PutTileAt = require('./PutTileAt');
-var WorldToTileX = require('./WorldToTileX');
-var WorldToTileY = require('./WorldToTileY');
+var Vector2 = require('../../math/Vector2');
+
+var point = new Vector2();
 
 /**
  * Puts a tile at the given world coordinates (pixels) in the specified layer. You can pass in either
@@ -15,7 +16,6 @@ var WorldToTileY = require('./WorldToTileY');
  * changed. Collision information will be recalculated at the specified location.
  *
  * @function Phaser.Tilemaps.Components.PutTileAtWorldXY
- * @private
  * @since 3.0.0
  *
  * @param {(integer|Phaser.Tilemaps.Tile)} tile - The index of this tile to set or a Tile object.
@@ -29,9 +29,9 @@ var WorldToTileY = require('./WorldToTileY');
  */
 var PutTileAtWorldXY = function (tile, worldX, worldY, recalculateFaces, camera, layer)
 {
-    var tileX = WorldToTileX(worldX, true, camera, layer);
-    var tileY = WorldToTileY(worldY, true, camera, layer);
-    return PutTileAt(tile, tileX, tileY, recalculateFaces, layer);
+    layer.tilemapLayer.worldToTileXY(worldX, worldY, true, point, camera, layer);
+
+    return PutTileAt(tile, point.x, point.y, recalculateFaces, layer);
 };
 
 module.exports = PutTileAtWorldXY;

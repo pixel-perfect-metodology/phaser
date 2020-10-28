@@ -4,16 +4,27 @@
  * @license      {@link https://opensource.org/licenses/MIT|MIT License}
  */
 
+var CONST = require('./const');
+var Extend = require('../../../utils/object/Extend');
+
 /**
  * @namespace Phaser.Renderer.WebGL.Pipelines
  */
 
-module.exports = {
+var Pipelines = {
 
     BitmapMaskPipeline: require('./BitmapMaskPipeline'),
-    ForwardDiffuseLightPipeline: require('./ForwardDiffuseLightPipeline'),
-    TextureTintPipeline: require('./TextureTintPipeline'),
-    TextureTintStripPipeline: require('./TextureTintStripPipeline'),
-    ModelViewProjection: require('./components/ModelViewProjection')
+    LightPipeline: require('./LightPipeline'),
+    MultiPipeline: require('./MultiPipeline'),
+    RopePipeline: require('./RopePipeline'),
+    SinglePipeline: require('./SinglePipeline')
 
 };
+
+//   Merge in the consts
+
+Pipelines = Extend(false, Pipelines, CONST);
+
+//  Export it
+
+module.exports = Pipelines;

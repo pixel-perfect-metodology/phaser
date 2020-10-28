@@ -24,6 +24,7 @@ var GameObjects = {
     GameObject: require('./GameObject'),
     BitmapText: require('./bitmaptext/static/BitmapText'),
     Blitter: require('./blitter/Blitter'),
+    Bob: require('./blitter/Bob'),
     Container: require('./container/Container'),
     DOMElement: require('./domelement/DOMElement'),
     DynamicBitmapText: require('./bitmaptext/dynamic/DynamicBitmapText'),
@@ -37,7 +38,12 @@ var GameObjects = {
     RetroFont: require('./bitmaptext/RetroFont'),
     Rope: require('./rope/Rope'),
     Sprite: require('./sprite/Sprite'),
-    Text: require('./text/static/Text'),
+
+    Text: require('./text/Text'),
+    GetTextSize: require('./text/GetTextSize'),
+    MeasureText: require('./text/MeasureText'),
+    TextStyle: require('./text/TextStyle'),
+
     TileSprite: require('./tilesprite/TileSprite'),
     Zone: require('./zone/Zone'),
     Video: require('./video/Video'),
@@ -74,7 +80,7 @@ var GameObjects = {
         Rope: require('./rope/RopeFactory'),
         Sprite: require('./sprite/SpriteFactory'),
         StaticBitmapText: require('./bitmaptext/static/BitmapTextFactory'),
-        Text: require('./text/static/TextFactory'),
+        Text: require('./text/TextFactory'),
         TileSprite: require('./tilesprite/TileSpriteFactory'),
         Zone: require('./zone/ZoneFactory'),
         Video: require('./video/VideoFactory'),
@@ -105,7 +111,7 @@ var GameObjects = {
         Rope: require('./rope/RopeCreator'),
         Sprite: require('./sprite/SpriteCreator'),
         StaticBitmapText: require('./bitmaptext/static/BitmapTextCreator'),
-        Text: require('./text/static/TextCreator'),
+        Text: require('./text/TextCreator'),
         TileSprite: require('./tilesprite/TileSpriteCreator'),
         Zone: require('./zone/ZoneCreator'),
         Video: require('./video/VideoCreator')
@@ -116,22 +122,18 @@ var GameObjects = {
 if (typeof WEBGL_RENDERER)
 {
     //  WebGL only Game Objects
-    GameObjects.Mesh = require('./mesh/Mesh');
-    GameObjects.Quad = require('./quad/Quad');
     GameObjects.Shader = require('./shader/Shader');
+    GameObjects.Mesh = require('./mesh/Mesh');
 
-    GameObjects.Factories.Mesh = require('./mesh/MeshFactory');
-    GameObjects.Factories.Quad = require('./quad/QuadFactory');
     GameObjects.Factories.Shader = require('./shader/ShaderFactory');
+    GameObjects.Factories.Mesh = require('./mesh/MeshFactory');
 
-    GameObjects.Creators.Mesh = require('./mesh/MeshCreator');
-    GameObjects.Creators.Quad = require('./quad/QuadCreator');
     GameObjects.Creators.Shader = require('./shader/ShaderCreator');
+    GameObjects.Creators.Mesh = require('./mesh/MeshCreator');
 
     GameObjects.Light = require('./lights/Light');
-
-    require('./lights/LightsManager');
-    require('./lights/LightsPlugin');
+    GameObjects.LightsManager = require('./lights/LightsManager');
+    GameObjects.LightsPlugin = require('./lights/LightsPlugin');
 }
 
 module.exports = GameObjects;

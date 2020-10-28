@@ -12,18 +12,19 @@ var Components = require('../components');
 var CONST = require('../../const');
 var Frame = require('../../textures/Frame');
 var GameObject = require('../GameObject');
+var GetColor = require('../../display/color/GetColor');
+var NOOP = require('../../utils/NOOP');
 var Render = require('./RenderTextureRender');
-var Utils = require('../../renderer/webgl/Utils');
 var UUID = require('../../utils/string/UUID');
 
 /**
  * @classdesc
  * A Render Texture.
- * 
+ *
  * A Render Texture is a special texture that allows any number of Game Objects to be drawn to it. You can take many complex objects and
  * draw them all to this one texture, which can they be used as the texture for other Game Object's. It's a way to generate dynamic
  * textures at run-time that are WebGL friendly and don't invoke expensive GPU uploads.
- * 
+ *
  * Note that under WebGL a FrameBuffer, which is what the Render Texture uses internally, cannot be anti-aliased. This means
  * that when drawing objects such as Shapes to a Render Texture they will appear to be drawn with no aliasing, however this
  * is a technical limitation of WebGL. To get around it, create your shape as a texture in an art package, then draw that
@@ -98,7 +99,7 @@ var RenderTexture = new Class({
          * @type {(Phaser.Renderer.Canvas.CanvasRenderer|Phaser.Renderer.WebGL.WebGLRenderer)}
          * @since 3.2.0
          */
-        this.renderer = scene.sys.game.renderer;
+        this.renderer = scene.sys.renderer;
 
         /**
          * A reference to the Texture Manager.
@@ -199,16 +200,16 @@ var RenderTexture = new Class({
         {
             this.canvas = CanvasPool.create2D(this, width, height);
 
-            //  Create a new Texture for this Text object
+            //  Create a new Texture for this RenderTexture object
             this.texture = scene.sys.textures.addCanvas(UUID(), this.canvas);
-            
+
             //  Get the frame
             this.frame = this.texture.get();
         }
         else
         {
             this.texture = scene.sys.textures.get(key);
-            
+
             //  Get the frame
             this.frame = this.texture.get(frame);
 
@@ -274,7 +275,11 @@ var RenderTexture = new Class({
 
         var renderer = this.renderer;
 
-        if (renderer.type === CONST.WEBGL)
+        if (!renderer)
+        {
+            this.drawGameObject = NOOP;
+        }
+        else if (renderer.type === CONST.WEBGL)
         {
             var gl = renderer.gl;
 
@@ -303,13 +308,13 @@ var RenderTexture = new Class({
 
     /**
      * Sets the size of this Game Object.
-     * 
+     *
      * @method Phaser.GameObjects.RenderTexture#setSize
      * @since 3.0.0
      *
      * @param {number} width - The width of this Game Object.
      * @param {number} height - The height of this Game Object.
-     * 
+     *
      * @return {this} This Game Object instance.
      */
     setSize: function (width, height)
@@ -319,13 +324,15 @@ var RenderTexture = new Class({
 
     /**
      * Resizes the Render Texture to the new dimensions given.
-     * 
+     *
      * If Render Texture was created from specific frame, only the size of the frame will be changed. The size of the source
      * texture will not change.
      *
      * If Render Texture was not created from specific frame, the following will happen:
+     *
      * In WebGL it will destroy and then re-create the frame buffer being used by the Render Texture.
      * In Canvas it will resize the underlying canvas element.
+     *
      * Both approaches will erase everything currently drawn to the Render Texture.
      *
      * If the dimensions given are the same as those already being used, calling this method will do nothing.
@@ -342,41 +349,47 @@ var RenderTexture = new Class({
     {
         if (height === undefined) { height = width; }
 
+        var frame = this.frame;
+        var renderer = this.renderer;
+
         if (width !== this.width || height !== this.height)
         {
-            if (this.frame.name === '__BASE')
+            if (frame.name === '__BASE')
             {
                 //  Resize the texture
 
                 this.canvas.width = width;
                 this.canvas.height = height;
-                
+
                 this.texture.width = width;
                 this.texture.height = height;
-                
+
                 if (this.gl)
                 {
                     var gl = this.gl;
 
-                    this.renderer.deleteTexture(this.frame.source.glTexture);
-                    this.renderer.deleteFramebuffer(this.framebuffer);
+                    renderer.deleteTexture(frame.source.glTexture);
+                    renderer.deleteFramebuffer(this.framebuffer);
 
-                    var glTexture = this.renderer.createTexture2D(0, gl.NEAREST, gl.NEAREST, gl.CLAMP_TO_EDGE, gl.CLAMP_TO_EDGE, gl.RGBA, null, width, height, false);
+                    var glTexture = renderer.createTexture2D(0, gl.NEAREST, gl.NEAREST, gl.CLAMP_TO_EDGE, gl.CLAMP_TO_EDGE, gl.RGBA, null, width, height, false);
 
-                    this.framebuffer = this.renderer.createFramebuffer(width, height, glTexture, false);
+                    this.framebuffer = renderer.createFramebuffer(width, height, glTexture, false);
 
-                    this.frame.source.isRenderTexture = true;
+                    frame.source.isRenderTexture = true;
 
-                    this.frame.glTexture = glTexture;
+                    frame.source.glTexture = glTexture;
+
+                    frame.glTexture = glTexture;
+
                     this.glTexture = glTexture;
                 }
 
-                this.frame.source.width = width;
-                this.frame.source.height = height;
+                frame.source.width = width;
+                frame.source.height = height;
 
                 this.camera.setSize(width, height);
 
-                this.frame.setSize(width, height);
+                frame.setSize(width, height);
 
                 this.width = width;
                 this.height = height;
@@ -388,17 +401,17 @@ var RenderTexture = new Class({
 
             var baseFrame = this.texture.getSourceImage();
 
-            if (this.frame.cutX + width > baseFrame.width)
+            if (frame.cutX + width > baseFrame.width)
             {
-                width = baseFrame.width - this.frame.cutX;
+                width = baseFrame.width - frame.cutX;
             }
 
-            if (this.frame.cutY + height > baseFrame.height)
+            if (frame.cutY + height > baseFrame.height)
             {
-                height = baseFrame.height - this.frame.cutY;
+                height = baseFrame.height - frame.cutY;
             }
 
-            this.frame.setSize(width, height, this.frame.cutX, this.frame.cutY);
+            frame.setSize(width, height, frame.cutX, frame.cutY);
         }
 
         this.updateDisplayOrigin();
@@ -450,24 +463,24 @@ var RenderTexture = new Class({
 
     /**
      * Stores a copy of this Render Texture in the Texture Manager using the given key.
-     * 
+     *
      * After doing this, any texture based Game Object, such as a Sprite, can use the contents of this
      * Render Texture by using the texture key:
-     * 
+     *
      * ```javascript
      * var rt = this.add.renderTexture(0, 0, 128, 128);
-     * 
+     *
      * // Draw something to the Render Texture
-     * 
+     *
      * rt.saveTexture('doodle');
-     * 
+     *
      * this.add.image(400, 300, 'doodle');
      * ```
-     * 
+     *
      * Updating the contents of this Render Texture will automatically update _any_ Game Object
      * that is using it as a texture. Calling `saveTexture` again will not save another copy
      * of the same texture, it will just rename the key of the existing copy.
-     * 
+     *
      * By default it will create a single base texture. You can add frames to the texture
      * by using the `Texture.add` method. After doing this, you can then allow Game Objects
      * to use a specific frame from a Render Texture.
@@ -482,7 +495,7 @@ var RenderTexture = new Class({
     saveTexture: function (key)
     {
         this.textureManager.renameTexture(this.texture.key, key);
-        
+
         this._saved = true;
 
         return this.texture;
@@ -505,56 +518,69 @@ var RenderTexture = new Class({
      */
     fill: function (rgb, alpha, x, y, width, height)
     {
+        var gl = this.gl;
+        var frame = this.frame;
+        var texture = this.texture;
+        var camera = this.camera;
+        var renderer = this.renderer;
+
         if (alpha === undefined) { alpha = 1; }
         if (x === undefined) { x = 0; }
         if (y === undefined) { y = 0; }
-        if (width === undefined) { width = this.frame.cutWidth; }
-        if (height === undefined) { height = this.frame.cutHeight; }
+        if (width === undefined) { width = frame.cutWidth; }
+        if (height === undefined) { height = frame.cutHeight; }
 
         var r = ((rgb >> 16) | 0) & 0xff;
         var g = ((rgb >> 8) | 0) & 0xff;
         var b = (rgb | 0) & 0xff;
 
-        var gl = this.gl;
-        var frame = this.frame;
-
-        this.camera.preRender(1, 1);
+        camera.preRender(1, 1);
 
         if (gl)
         {
-            var cx = this.camera._cx;
-            var cy = this.camera._cy;
-            var cw = this.camera._cw;
-            var ch = this.camera._ch;
+            var cx = camera.x;
+            var cy = camera.y;
+            var cw = camera.width;
+            var ch = camera.height;
 
-            this.renderer.setFramebuffer(this.framebuffer, false);
+            renderer.resetTextures(true);
 
-            this.renderer.pushScissor(cx, cy, cw, ch, ch);
+            renderer.pushScissor(cx, cy, cw, -ch);
+
+            renderer.setFramebuffer(this.framebuffer, false);
 
             var pipeline = this.pipeline;
-    
-            pipeline.projOrtho(0, this.texture.width, 0, this.texture.height, -1000.0, 1000.0);
+
+            var tw = texture.width;
+            var th = texture.height;
+
+            var rw = pipeline.width;
+            var rh = pipeline.height;
+
+            var sx = rw / tw;
+            var sy = rh / th;
 
             pipeline.drawFillRect(
-                x, y, width, height,
-                Utils.getTintFromFloats(r / 255, g / 255, b / 255, 1),
-                alpha
+                x * sx, (th - height - y) * sy, width * sx, height * sy,
+                GetColor(b, g, r), alpha
             );
 
-            this.renderer.setFramebuffer(null, false);
+            pipeline.flush();
 
-            this.renderer.popScissor();
+            renderer.setFramebuffer(null, false);
 
-            pipeline.projOrtho(0, pipeline.width, pipeline.height, 0, -1000.0, 1000.0);
+            renderer.popScissor();
         }
         else
         {
-            this.renderer.setContext(this.context);
+            var ctx = this.context;
 
-            this.context.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
-            this.context.fillRect(x + frame.cutX, y + frame.cutY, width, height);
+            renderer.setContext(ctx);
 
-            this.renderer.setContext();
+            ctx.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+            ctx.fillRect(x + frame.cutX, y + frame.cutY, width, height);
+
+            renderer.setContext();
         }
 
         this.dirty = true;
@@ -581,7 +607,7 @@ var RenderTexture = new Class({
                 var renderer = this.renderer;
 
                 renderer.setFramebuffer(this.framebuffer, true);
-        
+
                 if (this.frame.cutWidth !== this.canvas.width || this.frame.cutHeight !== this.canvas.height)
                 {
                     gl.scissor(this.frame.cutX, this.frame.cutY, this.frame.cutWidth, this.frame.cutHeight);
@@ -611,9 +637,9 @@ var RenderTexture = new Class({
     /**
      * Draws the given object, or an array of objects, to this Render Texture using a blend mode of ERASE.
      * This has the effect of erasing any filled pixels in the objects from this Render Texture.
-     * 
+     *
      * It can accept any of the following:
-     * 
+     *
      * * Any renderable Game Object, such as a Sprite, Text, Graphics or TileSprite.
      * * Dynamic and Static Tilemap Layers.
      * * A Group. The contents of which will be iterated and drawn in turn.
@@ -622,24 +648,24 @@ var RenderTexture = new Class({
      * * Another Render Texture.
      * * A Texture Frame instance.
      * * A string. This is used to look-up a texture from the Texture Manager.
-     * 
+     *
      * Note: You cannot erase a Render Texture from itself.
-     * 
+     *
      * If passing in a Group or Container it will only draw children that return `true`
      * when their `willRender()` method is called. I.e. a Container with 10 children,
      * 5 of which have `visible=false` will only draw the 5 visible ones.
-     * 
+     *
      * If passing in an array of Game Objects it will draw them all, regardless if
      * they pass a `willRender` check or not.
-     * 
+     *
      * You can pass in a string in which case it will look for a texture in the Texture
      * Manager matching that string, and draw the base frame.
-     * 
+     *
      * You can pass in the `x` and `y` coordinates to draw the objects at. The use of
      * the coordinates differ based on what objects are being drawn. If the object is
      * a Group, Container or Display List, the coordinates are _added_ to the positions
      * of the children. For all other types of object, the coordinates are exact.
-     * 
+     *
      * Calling this method causes the WebGL batch to flush, so it can write the texture
      * data to the framebuffer being used internally. The batch is flushed at the end,
      * after the entries have been iterated. So if you've a bunch of objects to draw,
@@ -674,9 +700,9 @@ var RenderTexture = new Class({
 
     /**
      * Draws the given object, or an array of objects, to this Render Texture.
-     * 
+     *
      * It can accept any of the following:
-     * 
+     *
      * * Any renderable Game Object, such as a Sprite, Text, Graphics or TileSprite.
      * * Dynamic and Static Tilemap Layers.
      * * A Group. The contents of which will be iterated and drawn in turn.
@@ -685,28 +711,28 @@ var RenderTexture = new Class({
      * * Another Render Texture.
      * * A Texture Frame instance.
      * * A string. This is used to look-up a texture from the Texture Manager.
-     * 
+     *
      * Note: You cannot draw a Render Texture to itself.
-     * 
+     *
      * If passing in a Group or Container it will only draw children that return `true`
      * when their `willRender()` method is called. I.e. a Container with 10 children,
      * 5 of which have `visible=false` will only draw the 5 visible ones.
-     * 
+     *
      * If passing in an array of Game Objects it will draw them all, regardless if
      * they pass a `willRender` check or not.
-     * 
+     *
      * You can pass in a string in which case it will look for a texture in the Texture
      * Manager matching that string, and draw the base frame. If you need to specify
      * exactly which frame to draw then use the method `drawFrame` instead.
-     * 
+     *
      * You can pass in the `x` and `y` coordinates to draw the objects at. The use of
      * the coordinates differ based on what objects are being drawn. If the object is
      * a Group, Container or Display List, the coordinates are _added_ to the positions
      * of the children. For all other types of object, the coordinates are exact.
-     * 
+     *
      * The `alpha` and `tint` values are only used by Texture Frames.
      * Game Objects use their own alpha and tint values when being drawn.
-     * 
+     *
      * Calling this method causes the WebGL batch to flush, so it can write the texture
      * data to the framebuffer being used internally. The batch is flushed at the end,
      * after the entries have been iterated. So if you've a bunch of objects to draw,
@@ -743,41 +769,47 @@ var RenderTexture = new Class({
         }
 
         var gl = this.gl;
+        var camera = this.camera;
+        var renderer = this.renderer;
 
-        this.camera.preRender(1, 1);
+        camera.preRender(1, 1);
 
         if (gl)
         {
-            var cx = this.camera._cx;
-            var cy = this.camera._cy;
-            var cw = this.camera._cw;
-            var ch = this.camera._ch;
+            var cx = camera.x;
+            var cy = camera.y;
+            var cw = camera.width;
+            var ch = camera.height;
 
-            this.renderer.setFramebuffer(this.framebuffer, false);
+            renderer.resetTextures(true);
 
-            this.renderer.pushScissor(cx, cy, cw, ch, ch);
+            renderer.setFramebuffer(this.framebuffer, false);
+
+            renderer.pushScissor(cx, cy, cw, ch, ch);
 
             var pipeline = this.pipeline;
-    
-            pipeline.projOrtho(0, this.texture.width, 0, this.texture.height, -1000.0, 1000.0);
+
+            var pipelineWidth = pipeline.width;
+            var pipelineHeight = pipeline.height;
+
+            pipeline.resize(this.texture.width, this.texture.height);
 
             this.batchList(entries, x, y, alpha, tint);
 
-            pipeline.flush();
+            //  Causes a flush + popScissor
+            renderer.setFramebuffer(null, true);
 
-            this.renderer.setFramebuffer(null, false);
+            renderer.resetTextures(true);
 
-            this.renderer.popScissor();
-
-            pipeline.projOrtho(0, pipeline.width, pipeline.height, 0, -1000.0, 1000.0);
+            pipeline.resize(pipelineWidth, pipelineHeight);
         }
         else
         {
-            this.renderer.setContext(this.context);
+            renderer.setContext(this.context);
 
             this.batchList(entries, x, y, alpha, tint);
 
-            this.renderer.setContext();
+            renderer.setContext();
         }
 
         this.dirty = true;
@@ -787,20 +819,20 @@ var RenderTexture = new Class({
 
     /**
      * Draws the Texture Frame to the Render Texture at the given position.
-     * 
+     *
      * Textures are referenced by their string-based keys, as stored in the Texture Manager.
-     * 
+     *
      * ```javascript
      * var rt = this.add.renderTexture(0, 0, 800, 600);
      * rt.drawFrame(key, frame);
      * ```
-     * 
+     *
      * You can optionally provide a position, alpha and tint value to apply to the frame
      * before it is drawn.
-     * 
+     *
      * Calling this method will cause a batch flush, so if you've got a stack of things to draw
      * in a tight loop, try using the `draw` method instead.
-     * 
+     *
      * If you need to draw a Sprite to this Render Texture, use the `draw` method instead.
      *
      * @method Phaser.GameObjects.RenderTexture#drawFrame
@@ -831,36 +863,43 @@ var RenderTexture = new Class({
         }
 
         var gl = this.gl;
+        var camera = this.camera;
+        var renderer = this.renderer;
         var textureFrame = this.textureManager.getFrame(key, frame);
 
         if (textureFrame)
         {
-            this.camera.preRender(1, 1);
+            camera.preRender(1, 1);
 
             if (gl)
             {
-                var cx = this.camera._cx;
-                var cy = this.camera._cy;
-                var cw = this.camera._cw;
-                var ch = this.camera._ch;
-    
-                this.renderer.setFramebuffer(this.framebuffer, false);
-    
-                this.renderer.pushScissor(cx, cy, cw, ch, ch);
-    
-                var pipeline = this.pipeline;
-        
-                pipeline.projOrtho(0, this.texture.width, 0, this.texture.height, -1000.0, 1000.0);
-        
-                pipeline.batchTextureFrame(textureFrame, x + this.frame.cutX, y + this.frame.cutY, tint, alpha, this.camera.matrix, null);
-            
-                pipeline.flush();
-        
-                this.renderer.setFramebuffer(null, false);
+                var cx = camera.x;
+                var cy = camera.y;
+                var cw = camera.width;
+                var ch = camera.height;
 
-                this.renderer.popScissor();
-            
-                pipeline.projOrtho(0, pipeline.width, pipeline.height, 0, -1000.0, 1000.0);
+                renderer.resetTextures(true);
+
+                renderer.setFramebuffer(this.framebuffer, false);
+
+                renderer.pushScissor(cx, cy, cw, ch, ch);
+
+                var pipeline = this.pipeline;
+
+                var pipelineWidth = pipeline.width;
+                var pipelineHeight = pipeline.height;
+
+                pipeline.resize(this.texture.width, this.texture.height);
+
+                pipeline.batchTextureFrame(textureFrame, x + this.frame.cutX, y + this.frame.cutY, tint, alpha, camera.matrix, null);
+
+                pipeline.flush();
+
+                renderer.setFramebuffer(null, false);
+
+                renderer.popScissor();
+
+                pipeline.resize(pipelineWidth, pipelineHeight);
             }
             else
             {
@@ -948,7 +987,7 @@ var RenderTexture = new Class({
         {
             var entry = children[i];
 
-            if (entry.willRender())
+            if (entry.willRender(this.camera))
             {
                 var tx = entry.x + x;
                 var ty = entry.y + y;
@@ -983,8 +1022,8 @@ var RenderTexture = new Class({
         }
 
         gameObject.setPosition(x + this.frame.cutX, y + this.frame.cutY);
-        
-        gameObject.renderWebGL(this.renderer, gameObject, 0, this.camera, null);
+
+        gameObject.renderWebGL(this.renderer, gameObject, this.camera);
 
         gameObject.setPosition(prevX, prevY);
     },
@@ -1017,7 +1056,7 @@ var RenderTexture = new Class({
 
         gameObject.setPosition(x + this.frame.cutX, y + this.frame.cutY);
 
-        gameObject.renderCanvas(this.renderer, gameObject, 0, this.camera, null);
+        gameObject.renderCanvas(this.renderer, gameObject, this.camera, null);
 
         gameObject.setPosition(prevX, prevY);
 
@@ -1080,9 +1119,9 @@ var RenderTexture = new Class({
             var ctx = this.context;
             var cd = textureFrame.canvasData;
             var source = textureFrame.source.image;
-    
+
             var matrix = this.camera.matrix;
-    
+
             ctx.globalAlpha = this.globalAlpha;
 
             ctx.setTransform(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]);
@@ -1093,11 +1132,11 @@ var RenderTexture = new Class({
 
     /**
      * Takes a snapshot of the given area of this Render Texture.
-     * 
+     *
      * The snapshot is taken immediately.
-     * 
+     *
      * To capture the whole Render Texture see the `snapshot` method. To capture a specific pixel, see `snapshotPixel`.
-     * 
+     *
      * Snapshots work by using the WebGL `readPixels` feature to grab every pixel from the frame buffer into an ArrayBufferView.
      * It then parses this, copying the contents to a temporary Canvas and finally creating an Image object from it,
      * which is the image returned to the callback provided. All in all, this is a computationally expensive and blocking process,
@@ -1132,11 +1171,11 @@ var RenderTexture = new Class({
 
     /**
      * Takes a snapshot of the whole of this Render Texture.
-     * 
+     *
      * The snapshot is taken immediately.
-     * 
+     *
      * To capture just a portion of the Render Texture see the `snapshotArea` method. To capture a specific pixel, see `snapshotPixel`.
-     * 
+     *
      * Snapshots work by using the WebGL `readPixels` feature to grab every pixel from the frame buffer into an ArrayBufferView.
      * It then parses this, copying the contents to a temporary Canvas and finally creating an Image object from it,
      * which is the image returned to the callback provided. All in all, this is a computationally expensive and blocking process,
@@ -1167,11 +1206,11 @@ var RenderTexture = new Class({
 
     /**
      * Takes a snapshot of the given pixel from this Render Texture.
-     * 
+     *
      * The snapshot is taken immediately.
-     * 
+     *
      * To capture the whole Render Texture see the `snapshot` method. To capture a specific portion, see `snapshotArea`.
-     * 
+     *
      * Unlike the other two snapshot methods, this one will send your callback a `Color` object containing the color data for
      * the requested pixel. It doesn't need to create an internal Canvas or Image object, so is a lot faster to execute,
      * using less memory, than the other snapshot methods.

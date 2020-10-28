@@ -26,7 +26,7 @@ var Tile = require('../Tile');
  * consumption. However if your map is small or you need to update the tiles dynamically, then leave
  * the default value set.
  *
- * @return {Phaser.Tilemaps.MapData} [description]
+ * @return {Phaser.Tilemaps.MapData} The MapData object.
  */
 var Parse2DArray = function (name, data, tileWidth, tileHeight, insertNull)
 {
@@ -34,7 +34,7 @@ var Parse2DArray = function (name, data, tileWidth, tileHeight, insertNull)
         tileWidth: tileWidth,
         tileHeight: tileHeight
     });
-
+    
     var mapData = new MapData({
         name: name,
         tileWidth: tileWidth,

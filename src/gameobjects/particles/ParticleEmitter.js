@@ -367,14 +367,14 @@ var ParticleEmitter = new Class({
         this.scaleY = new EmitterOp(config, 'scaleY', 1);
 
         /**
-         * Color tint applied to emitted particles. Any alpha component (0xAA000000) is ignored.
+         * Color tint applied to emitted particles. Value must not include the alpha channel.
          *
          * @name Phaser.GameObjects.Particles.ParticleEmitter#tint
          * @type {Phaser.GameObjects.Particles.EmitterOp}
-         * @default 0xffffffff
+         * @default 0xffffff
          * @since 3.0.0
          */
-        this.tint = new EmitterOp(config, 'tint', 0xffffffff);
+        this.tint = new EmitterOp(config, 'tint', 0xffffff);
 
         /**
          * The alpha (transparency) of emitted particles.
@@ -861,6 +861,11 @@ var ParticleEmitter = new Class({
         if (HasValue(config, 'frame'))
         {
             this.setFrame(config.frame);
+        }
+
+        if (HasValue(config, 'reserve'))
+        {
+            this.reserve(config.reserve);
         }
 
         return this;
@@ -1824,7 +1829,7 @@ var ParticleEmitter = new Class({
      */
     depthSort: function ()
     {
-        StableSort.inplace(this.alive, this.depthSortCallback);
+        StableSort(this.alive, this.depthSortCallback);
 
         return this;
     },
