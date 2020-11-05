@@ -10,6 +10,8 @@ var CONST = require('./pipelines/const');
 
 //  Default Phaser 3 Pipelines
 var BitmapMaskPipeline = require('./pipelines/BitmapMaskPipeline');
+var CameraPipeline = require('./pipelines/CameraPipeline');
+var GraphicsPipeline = require('./pipelines/GraphicsPipeline');
 var LightPipeline = require('./pipelines/LightPipeline');
 var MultiPipeline = require('./pipelines/MultiPipeline');
 var RopePipeline = require('./pipelines/RopePipeline');
@@ -99,6 +101,26 @@ var PipelineManager = new Class({
         this.previous = null;
 
         /**
+         * Current post pipeline in use by the WebGLRenderer.
+         *
+         * @name Phaser.Renderer.WebGL.PipelineManager#currentPost
+         * @type {Phaser.Renderer.WebGL.WebGLPipeline}
+         * @default null
+         * @since 3.50.0
+         */
+        this.currentPost = null;
+
+        /**
+         * The previous post pipeline that was in use.
+         *
+         * @name Phaser.Renderer.WebGL.PipelineManager#previousPost
+         * @type {Phaser.Renderer.WebGL.WebGLPipeline}
+         * @default null
+         * @since 3.50.0
+         */
+        this.previousPost = null;
+
+        /**
          * A constant-style reference to the Multi Pipeline Instance.
          *
          * This is the default Phaser 3 pipeline and is used by the WebGL Renderer to manage
@@ -123,6 +145,19 @@ var PipelineManager = new Class({
          * @since 3.50.0
          */
         this.BITMAPMASK_PIPELINE = null;
+
+        /**
+         * A constant-style reference to the Camera Pipeline Instance.
+         *
+         * This is the default Phaser 3 camera pipeline and is used by cameras to handle
+         * their pre and post render effects. This property is set during the `boot` method.
+         *
+         * @name Phaser.Renderer.WebGL.PipelineManager#CAMERA_PIPELINE
+         * @type {Phaser.Renderer.WebGL.Pipelines.CameraPipeline}
+         * @default null
+         * @since 3.50.0
+         */
+        this.CAMERA_PIPELINE = null;
     },
 
     /**
@@ -142,10 +177,12 @@ var PipelineManager = new Class({
 
         this.MULTI_PIPELINE = this.add(CONST.MULTI_PIPELINE, new MultiPipeline({ game: game }));
         this.BITMAPMASK_PIPELINE = this.add(CONST.BITMAPMASK_PIPELINE, new BitmapMaskPipeline({ game: game }));
+        this.CAMERA_PIPELINE = this.add(CONST.CAMERA_PIPELINE, new CameraPipeline({ game: game }));
 
         this.add(CONST.SINGLE_PIPELINE, new SinglePipeline({ game: game }));
         this.add(CONST.ROPE_PIPELINE, new RopePipeline({ game: game }));
         this.add(CONST.LIGHT_PIPELINE, new LightPipeline({ game: game }));
+        this.add(CONST.GRAPHICS_PIPELINE, new GraphicsPipeline({ game: game }));
     },
 
     /**
@@ -183,6 +220,7 @@ var PipelineManager = new Class({
         if (!pipelines.has(name))
         {
             pipeline.name = name;
+            pipeline.manager = this;
 
             pipelines.set(name, pipeline);
         }
@@ -191,14 +229,14 @@ var PipelineManager = new Class({
             console.warn('Pipeline exists: ' + name);
         }
 
-        if (renderer.width !== 0 && renderer.height !== 0)
-        {
-            pipeline.resize(renderer.width, renderer.height);
-        }
-
         if (!pipeline.hasBooted)
         {
             pipeline.boot();
+        }
+
+        if (renderer.width !== 0 && renderer.height !== 0)
+        {
+            pipeline.resize(renderer.width, renderer.height);
         }
 
         return pipeline;
@@ -373,8 +411,7 @@ var PipelineManager = new Class({
      *
      * This method accepts a pipeline instance as its parameter, not the name.
      *
-     * If the pipeline isn't already the current one, it will also call `resetTextures` on
-     * the `WebGLRenderer`. After this, `WebGLPipeline.bind` and then `onBind` are called.
+     * If the pipeline isn't already the current one it will call `WebGLPipeline.bind` and then `onBind`.
      *
      * @method Phaser.Renderer.WebGL.PipelineManager#set
      * @since 3.50.0
@@ -386,16 +423,14 @@ var PipelineManager = new Class({
      */
     set: function (pipeline, gameObject)
     {
-        var renderer = this.renderer;
-        var current = this.current;
-
-        if (
-            current !== pipeline ||
-            current.vertexBuffer !== renderer.currentVertexBuffer ||
-            current.currentShader.program !== renderer.currentProgram
-        )
+        if (!this.isCurrent(pipeline))
         {
-            renderer.resetTextures();
+            this.flush();
+
+            if (this.current)
+            {
+                this.current.unbind();
+            }
 
             this.current = pipeline;
 
@@ -405,6 +440,53 @@ var PipelineManager = new Class({
         pipeline.onBind(gameObject);
 
         return pipeline;
+    },
+
+    preBatch: function (gameObject)
+    {
+        if (!gameObject || !gameObject.postPipeline)
+        {
+            return;
+        }
+
+        this.flush();
+
+        gameObject.postPipeline.postBind(gameObject);
+    },
+
+    postBatch: function (gameObject)
+    {
+        if (!gameObject || !gameObject.postPipeline)
+        {
+            return;
+        }
+
+        this.flush();
+
+        gameObject.postPipeline.postFlush(gameObject);
+    },
+
+    /**
+     * Checks to see if the given pipeline is already the active pipeline, both within this
+     * Pipeline Manager, and also has the same vertex buffer and shader set within the Renderer.
+     *
+     * @method Phaser.Renderer.WebGL.PipelineManager#isCurrent
+     * @since 3.50.0
+     *
+     * @param {Phaser.Renderer.WebGL.WebGLPipeline} pipeline - The pipeline instance to be checked.
+     *
+     * @return {boolean} `true` if the given pipeline is already the current pipeline, otherwise `false`.
+     */
+    isCurrent: function (pipeline)
+    {
+        var renderer = this.renderer;
+        var current = this.current;
+
+        return !(
+            current !== pipeline ||
+            current.vertexBuffer !== renderer.currentVertexBuffer ||
+            current.currentShader.program !== renderer.currentProgram
+        );
     },
 
     /**
@@ -420,6 +502,21 @@ var PipelineManager = new Class({
     setMulti: function ()
     {
         return this.set(this.MULTI_PIPELINE);
+    },
+
+    /**
+     * Sets the Camera Pipeline to be the currently bound pipeline.
+     *
+     * This is the default Phaser 3 pipeline for cameras.
+     *
+     * @method Phaser.Renderer.WebGL.PipelineManager#setCameraPipeline
+     * @since 3.50.0
+     *
+     * @return {Phaser.Renderer.WebGL.Pipelines.CameraPipeline} The Camera Pipeline instance.
+     */
+    setCameraPipeline: function ()
+    {
+        return this.set(this.CAMERA_PIPELINE);
     },
 
     /**

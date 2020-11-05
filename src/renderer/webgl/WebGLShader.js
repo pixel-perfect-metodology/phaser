@@ -5,7 +5,6 @@
  */
 
 var Class = require('../../utils/Class');
-var Utils = require('./Utils');
 
 /**
  * @classdesc
@@ -20,7 +19,7 @@ var Utils = require('./Utils');
  * @param {string} name - The name of this Shader.
  * @param {string} vertexShader - The vertex shader source code as a single string.
  * @param {string} fragmentShader - The fragment shader source code as a single string.
- * @param {string[]} attributes -
+ * @param {Phaser.Types.Renderer.WebGL.WebGLPipelineAttributesConfig[]} attributes - An array of attributes.
  * @param {string[]} [uniforms] - An array of shader uniform names that will be looked-up to get the locations for.
  */
 var WebGLShader = new Class({
@@ -79,11 +78,44 @@ var WebGLShader = new Class({
         /**
          * Array of objects that describe the vertex attributes.
          *
-         * @name Phaser.Renderer.WebGL.WebGLPipeline#attributes
-         * @type {Phaser.Types.Renderer.WebGL.WebGLPipelineAttributesConfig}
+         * @name Phaser.Renderer.WebGL.WebGLShader#attributes
+         * @type {Phaser.Types.Renderer.WebGL.WebGLPipelineAttribute[]}
          * @since 3.50.0
          */
-        this.attributes = attributes;
+        this.attributes;
+
+        /**
+         * The amount of vertex attribute components of 32 bit length.
+         *
+         * @name Phaser.Renderer.WebGL.WebGLShader#vertexComponentCount
+         * @type {integer}
+         * @since 3.50.0
+         */
+        this.vertexComponentCount = 0;
+
+        /**
+         * The size, in bytes, of a single vertex.
+         *
+         * This is derived by adding together all of the vertex attributes.
+         *
+         * For example, the Multi Pipeline has the following attributes:
+         *
+         * inPosition - (size 2 x gl.FLOAT) = 8
+         * inTexCoord - (size 2 x gl.FLOAT) = 8
+         * inTexId - (size 1 x gl.FLOAT) = 4
+         * inTintEffect - (size 1 x gl.FLOAT) = 4
+         * inTint - (size 4 x gl.UNSIGNED_BYTE) = 4
+         *
+         * The total, in this case, is 8 + 8 + 4 + 4 + 4 = 28.
+         *
+         * This is calculated automatically during the `createAttributes` method.
+         *
+         * @name Phaser.Renderer.WebGL.WebGLShader#vertexSize
+         * @type {integer}
+         * @readonly
+         * @since 3.50.0
+         */
+        this.vertexSize = 0;
 
         /**
          * The uniforms that this shader requires, as set via the configuration object.
@@ -98,6 +130,8 @@ var WebGLShader = new Class({
          */
         this.uniforms = {};
 
+        this.createAttributes(attributes);
+
         if (uniforms)
         {
             this.setUniformLocations(uniforms);
@@ -105,31 +139,160 @@ var WebGLShader = new Class({
     },
 
     /**
-     * Sets the program this shader uses as being the active shader in the WebGL Renderer.
+     * Takes the vertex attributes config and parses it, creating the resulting array that is stored
+     * in this shaders `attributes` property, calculating the offset, normalization and location
+     * in the process.
      *
-     * Then, if the parent pipeline model-view-projection is dirty, sets the uniform matrix4
-     * values for each.
+     * Calling this method resets `WebGLShader.attributes`, `WebGLShader.vertexSize` and
+     * `WebGLShader.vertexComponentCount`.
+     *
+     * It is called automatically when this class is created, but can be called manually if required.
+     *
+     * @method Phaser.Renderer.WebGL.WebGLShader#createAttributes
+     * @since 3.50.0
+     *
+     * @param {Phaser.Types.Renderer.WebGL.WebGLPipelineAttributesConfig[]} attributes - An array of attributes configs.
+     */
+    createAttributes: function (attributes)
+    {
+        var count = 0;
+        var offset = 0;
+        var result = [];
+
+        this.vertexComponentCount = 0;
+
+        for (var i = 0; i < attributes.length; i++)
+        {
+            var element = attributes[i];
+
+            var name = element.name;
+            var size = element.size; // i.e. 1 for a float, 2 for a vec2, 4 for a vec4, etc
+            var type = element.type.enum; // The GLenum
+            var typeSize = element.type.size; // The size in bytes of the type
+            var normalized = (element.normalized) ? true : false;
+
+            result.push({
+                name: name,
+                size: size,
+                type: type,
+                normalized: normalized,
+                offset: offset,
+                enabled: false,
+                location: -1
+            });
+
+            if (typeSize === 4)
+            {
+                count += size;
+            }
+            else
+            {
+                count++;
+            }
+
+            offset += size * typeSize;
+        }
+
+        this.vertexSize = offset;
+        this.vertexComponentCount = count;
+        this.attributes = result;
+    },
+
+    /**
+     * Sets the program this shader uses as being the active shader in the WebGL Renderer.
      *
      * This method is called every time the parent pipeline is made the current active pipeline.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#bind
      * @since 3.50.0
      *
+     * @param {boolean} [setAttributes=false] - Should the vertex attribute pointers be set?
+     * @param {boolean} [flush=false] - Flush the pipeline before binding this shader?
+     *
      * @return {this} This WebGLShader instance.
      */
-    bind: function ()
+    bind: function (setAttributes, flush)
     {
+        if (setAttributes === undefined) { setAttributes = false; }
+        if (flush === undefined) { flush = false; }
+
+        if (flush)
+        {
+            this.pipeline.flush();
+        }
+
         this.renderer.setProgram(this.program);
 
-        var pipeline = this.pipeline;
-
-        if (pipeline.mvpDirty)
+        if (setAttributes)
         {
-            this.setMatrix4fv('uModelMatrix', false, pipeline.modelMatrix.val);
-            this.setMatrix4fv('uViewMatrix', false, pipeline.viewMatrix.val);
-            this.setMatrix4fv('uProjectionMatrix', false, pipeline.projectionMatrix.val);
+            this.setAttribPointers();
+        }
 
-            pipeline.mvpDirty = false;
+        return this;
+    },
+
+    /**
+     * Sets the vertex attribute pointers.
+     *
+     * This should only be called after the vertex buffer has been bound.
+     *
+     * It is called automatically during the `bind` method.
+     *
+     * @method Phaser.Renderer.WebGL.WebGLShader#setAttribPointers
+     * @since 3.50.0
+     *
+     * @param {boolean} [reset=false] - Reset the vertex attribute locations?
+     *
+     * @return {this} This WebGLShader instance.
+     */
+    setAttribPointers: function (reset)
+    {
+        if (reset === undefined) { reset = false; }
+
+        var gl = this.gl;
+        var vertexSize = this.vertexSize;
+        var attributes = this.attributes;
+        var program = this.program;
+
+        for (var i = 0; i < attributes.length; i++)
+        {
+            var element = attributes[i];
+
+            var size = element.size;
+            var type = element.type;
+            var offset = element.offset;
+            var enabled = element.enabled;
+            var location = element.location;
+            var normalized = (element.normalized) ? true : false;
+
+            if (reset)
+            {
+                var attribLocation = gl.getAttribLocation(program, element.name);
+
+                if (attribLocation >= 0)
+                {
+                    gl.enableVertexAttribArray(attribLocation);
+
+                    gl.vertexAttribPointer(attribLocation, size, type, normalized, vertexSize, offset);
+
+                    element.enabled = true;
+                    element.location = attribLocation;
+                }
+                else if (attribLocation !== -1)
+                {
+                    gl.disableVertexAttribArray(attribLocation);
+                }
+            }
+            else if (enabled)
+            {
+                gl.vertexAttribPointer(location, size, type, normalized, vertexSize, offset);
+            }
+            else if (!enabled && location > -1)
+            {
+                gl.disableVertexAttribArray(location);
+
+                element.location = -1;
+            }
         }
 
         return this;
@@ -162,8 +325,215 @@ var WebGLShader = new Class({
 
             if (location !== null)
             {
-                uniforms[name] = location;
+                uniforms[name] =
+                {
+                    name: name,
+                    location: location,
+                    value1: null,
+                    value2: null,
+                    value3: null,
+                    value4: null
+                };
             }
+        }
+
+        return this;
+    },
+
+    /**
+     * Checks to see if the given uniform name exists and is active in this shader.
+     *
+     * @method Phaser.Renderer.WebGL.WebGLShader#hasUniform
+     * @since 3.50.0
+     *
+     * @param {string} name - The name of the uniform to check for.
+     *
+     * @return {boolean} `true` if the uniform exists, otherwise `false`.
+     */
+    hasUniform: function (name)
+    {
+        return this.uniforms.hasOwnProperty(name);
+    },
+
+    /**
+     * Sets the given uniform value/s based on the name and GL function.
+     *
+     * This method is called internally by other methods such as `set1f` and `set3iv`.
+     *
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
+     *
+     * @method Phaser.Renderer.WebGL.WebGLShader#setUniform1
+     * @since 3.50.0
+     *
+     * @param {function} setter - The GL function to call.
+     * @param {string} name - The name of the uniform to set.
+     * @param {(boolean|number|number[]|Float32Array)} value1 - The new value of the uniform.
+     *
+     * @return {this} This WebGLShader instance.
+     */
+    setUniform1: function (setter, name, value1)
+    {
+        var uniform = this.uniforms[name];
+
+        if (!uniform)
+        {
+            return this;
+        }
+
+        if (uniform.value1 !== value1)
+        {
+            uniform.value1 = value1;
+
+            this.renderer.setProgram(this.program);
+
+            setter.call(this.gl, uniform.location, value1);
+
+            this.pipeline.currentShader = this;
+        }
+
+        return this;
+    },
+
+    /**
+     * Sets the given uniform value/s based on the name and GL function.
+     *
+     * This method is called internally by other methods such as `set1f` and `set3iv`.
+     *
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
+     *
+     * @method Phaser.Renderer.WebGL.WebGLShader#setUniform2
+     * @since 3.50.0
+     *
+     * @param {function} setter - The GL function to call.
+     * @param {string} name - The name of the uniform to set.
+     * @param {(boolean|number|number[]|Float32Array)} value1 - The new value of the uniform.
+     * @param {(boolean|number|number[]|Float32Array)} value2 - The new value of the uniform.
+     *
+     * @return {this} This WebGLShader instance.
+     */
+    setUniform2: function (setter, name, value1, value2)
+    {
+        var uniform = this.uniforms[name];
+
+        if (!uniform)
+        {
+            return this;
+        }
+
+        if (uniform.value1 !== value1 || uniform.value2 !== value2)
+        {
+            uniform.value1 = value1;
+            uniform.value2 = value2;
+
+            this.renderer.setProgram(this.program);
+
+            setter.call(this.gl, uniform.location, value1, value2);
+
+            this.pipeline.currentShader = this;
+        }
+
+        return this;
+    },
+
+    /**
+     * Sets the given uniform value/s based on the name and GL function.
+     *
+     * This method is called internally by other methods such as `set1f` and `set3iv`.
+     *
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
+     *
+     * @method Phaser.Renderer.WebGL.WebGLShader#setUniform3
+     * @since 3.50.0
+     *
+     * @param {function} setter - The GL function to call.
+     * @param {string} name - The name of the uniform to set.
+     * @param {(boolean|number|number[]|Float32Array)} value1 - The new value of the uniform.
+     * @param {(boolean|number|number[]|Float32Array)} value2 - The new value of the uniform.
+     * @param {(boolean|number|number[]|Float32Array)} value3 - The new value of the uniform.
+     *
+     * @return {this} This WebGLShader instance.
+     */
+    setUniform3: function (setter, name, value1, value2, value3)
+    {
+        var uniform = this.uniforms[name];
+
+        if (!uniform)
+        {
+            return this;
+        }
+
+        if (uniform.value1 !== value1 || uniform.value2 !== value2 || uniform.value3 !== value3)
+        {
+            uniform.value1 = value1;
+            uniform.value2 = value2;
+            uniform.value3 = value3;
+
+            this.renderer.setProgram(this.program);
+
+            setter.call(this.gl, uniform.location, value1, value2, value3);
+
+            this.pipeline.currentShader = this;
+        }
+
+        return this;
+    },
+
+    /**
+     * Sets the given uniform value/s based on the name and GL function.
+     *
+     * This method is called internally by other methods such as `set1f` and `set3iv`.
+     *
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
+     *
+     * @method Phaser.Renderer.WebGL.WebGLShader#setUniform4
+     * @since 3.50.0
+     *
+     * @param {function} setter - The GL function to call.
+     * @param {string} name - The name of the uniform to set.
+     * @param {(boolean|number|number[]|Float32Array)} value1 - The new value of the uniform.
+     * @param {(boolean|number|number[]|Float32Array)} value2 - The new value of the uniform.
+     * @param {(boolean|number|number[]|Float32Array)} value3 - The new value of the uniform.
+     * @param {(boolean|number|number[]|Float32Array)} value4 - The new value of the uniform.
+     *
+     * @return {this} This WebGLShader instance.
+     */
+    setUniform4: function (setter, name, value1, value2, value3, value4)
+    {
+        var uniform = this.uniforms[name];
+
+        if (!uniform)
+        {
+            return this;
+        }
+
+        if (uniform.value1 !== value1 || uniform.value2 !== value2 || uniform.value3 !== value3 || uniform.value4 !== value4)
+        {
+            uniform.value1 = value1;
+            uniform.value2 = value2;
+            uniform.value3 = value3;
+            uniform.value4 = value4;
+
+            this.renderer.setProgram(this.program);
+
+            setter.call(this.gl, uniform.location, value1, value2, value3, value4);
+
+            this.pipeline.currentShader = this;
         }
 
         return this;
@@ -172,8 +542,11 @@ var WebGLShader = new Class({
     /**
      * Sets a 1f uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set1f
      * @since 3.50.0
@@ -185,16 +558,17 @@ var WebGLShader = new Class({
      */
     set1f: function (name, x)
     {
-        this.gl.uniform1f(this.uniforms[name], x);
-
-        return this;
+        return this.setUniform1(this.gl.uniform1f, name, x);
     },
 
     /**
      * Sets a 2f uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set2f
      * @since 3.50.0
@@ -207,16 +581,17 @@ var WebGLShader = new Class({
      */
     set2f: function (name, x, y)
     {
-        this.gl.uniform2f(this.uniforms[name], x, y);
-
-        return this;
+        return this.setUniform2(this.gl.uniform2f, name, x, y);
     },
 
     /**
      * Sets a 3f uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set3f
      * @since 3.50.0
@@ -230,16 +605,17 @@ var WebGLShader = new Class({
      */
     set3f: function (name, x, y, z)
     {
-        this.gl.uniform3f(this.uniforms[name], x, y, z);
-
-        return this;
+        return this.setUniform3(this.gl.uniform3f, name, x, y, z);
     },
 
     /**
      * Sets a 4f uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set4f
      * @since 3.50.0
@@ -254,16 +630,17 @@ var WebGLShader = new Class({
      */
     set4f: function (name, x, y, z, w)
     {
-        this.gl.uniform4f(this.uniforms[name], x, y, z, w);
-
-        return this;
+        return this.setUniform4(this.gl.uniform4f, name, x, y, z, w);
     },
 
     /**
      * Sets a 1fv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set1fv
      * @since 3.50.0
@@ -275,16 +652,17 @@ var WebGLShader = new Class({
      */
     set1fv: function (name, arr)
     {
-        this.gl.uniform1fv(this.uniforms[name], arr);
-
-        return this;
+        return this.setUniform1(this.gl.uniform1fv, name, arr);
     },
 
     /**
      * Sets a 2fv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set2fv
      * @since 3.50.0
@@ -296,16 +674,17 @@ var WebGLShader = new Class({
      */
     set2fv: function (name, arr)
     {
-        this.gl.uniform2fv(this.uniforms[name], arr);
-
-        return this;
+        return this.setUniform1(this.gl.uniform2fv, name, arr);
     },
 
     /**
      * Sets a 3fv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set3fv
      * @since 3.50.0
@@ -317,16 +696,17 @@ var WebGLShader = new Class({
      */
     set3fv: function (name, arr)
     {
-        this.gl.uniform3fv(this.uniforms[name], arr);
-
-        return this;
+        return this.setUniform1(this.gl.uniform3fv, name, arr);
     },
 
     /**
      * Sets a 4fv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set4fv
      * @since 3.50.0
@@ -338,16 +718,17 @@ var WebGLShader = new Class({
      */
     set4fv: function (name, arr)
     {
-        this.gl.uniform4fv(this.uniforms[name], arr);
-
-        return this;
+        return this.setUniform1(this.gl.uniform4fv, name, arr);
     },
 
     /**
      * Sets a 1iv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set1iv
      * @since 3.50.0
@@ -359,16 +740,17 @@ var WebGLShader = new Class({
      */
     set1iv: function (name, arr)
     {
-        this.gl.uniform1iv(this.uniforms[name], arr);
-
-        return this;
+        return this.setUniform1(this.gl.uniform1iv, name, arr);
     },
 
     /**
      * Sets a 2iv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set2iv
      * @since 3.50.0
@@ -380,16 +762,17 @@ var WebGLShader = new Class({
      */
     set2iv: function (name, arr)
     {
-        this.gl.uniform2iv(this.uniforms[name], arr);
-
-        return this;
+        return this.setUniform1(this.gl.uniform2iv, name, arr);
     },
 
     /**
      * Sets a 3iv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set3iv
      * @since 3.50.0
@@ -401,16 +784,17 @@ var WebGLShader = new Class({
      */
     set3iv: function (name, arr)
     {
-        this.gl.uniform3iv(this.uniforms[name], arr);
-
-        return this;
+        return this.setUniform1(this.gl.uniform3iv, name, arr);
     },
 
     /**
      * Sets a 4iv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set4iv
      * @since 3.50.0
@@ -422,16 +806,17 @@ var WebGLShader = new Class({
      */
     set4iv: function (name, arr)
     {
-        this.gl.uniform4iv(this.uniforms[name], arr);
-
-        return this;
+        return this.setUniform1(this.gl.uniform4iv, name, arr);
     },
 
     /**
      * Sets a 1i uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set1i
      * @since 3.50.0
@@ -443,16 +828,17 @@ var WebGLShader = new Class({
      */
     set1i: function (name, x)
     {
-        this.gl.uniform1i(this.uniforms[name], x);
-
-        return this;
+        return this.setUniform1(this.gl.uniform1i, name, x);
     },
 
     /**
      * Sets a 2i uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set2i
      * @since 3.50.0
@@ -465,16 +851,17 @@ var WebGLShader = new Class({
      */
     set2i: function (name, x, y)
     {
-        this.gl.uniform2i(this.uniforms[name], x, y);
-
-        return this;
+        return this.setUniform2(this.gl.uniform2i, name, x, y);
     },
 
     /**
      * Sets a 3i uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set3i
      * @since 3.50.0
@@ -488,16 +875,17 @@ var WebGLShader = new Class({
      */
     set3i: function (name, x, y, z)
     {
-        this.gl.uniform3i(this.uniforms[name], x, y, z);
-
-        return this;
+        return this.setUniform3(this.gl.uniform3i, name, x, y, z);
     },
 
     /**
      * Sets a 4i uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#set4i
      * @since 3.50.0
@@ -512,16 +900,17 @@ var WebGLShader = new Class({
      */
     set4i: function (name, x, y, z, w)
     {
-        this.gl.uniform4i(this.uniforms[name], x, y, z, w);
-
-        return this;
+        return this.setUniform4(this.gl.uniform4i, name, x, y, z, w);
     },
 
     /**
      * Sets a matrix 2fv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#setMatrix2fv
      * @since 3.50.0
@@ -534,16 +923,17 @@ var WebGLShader = new Class({
      */
     setMatrix2fv: function (name, transpose, matrix)
     {
-        this.gl.uniformMatrix2fv(this.uniforms[name], transpose, matrix);
-
-        return this;
+        return this.setUniform2(this.gl.uniformMatrix2fv, name, transpose, matrix);
     },
 
     /**
      * Sets a matrix 3fv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#setMatrix3fv
      * @since 3.50.0
@@ -556,16 +946,17 @@ var WebGLShader = new Class({
      */
     setMatrix3fv: function (name, transpose, matrix)
     {
-        this.gl.uniformMatrix3fv(this.uniforms[name], transpose, matrix);
-
-        return this;
+        return this.setUniform2(this.gl.uniformMatrix3fv, name, transpose, matrix);
     },
 
     /**
      * Sets a matrix 4fv uniform value based on the given name on this shader.
      *
-     * This shader program must be currently active. You can safely call this method from
-     * pipeline methods such as `bind`, `onBind` and batch related calls.
+     * The uniform is only set if the value/s given are different to those previously set.
+     *
+     * This method works by first setting this shader as being the current shader within the
+     * WebGL Renderer, if it isn't already. It also sets this shader as being the current
+     * one within the pipeline it belongs to.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#setMatrix4fv
      * @since 3.50.0
@@ -578,13 +969,13 @@ var WebGLShader = new Class({
      */
     setMatrix4fv: function (name, transpose, matrix)
     {
-        this.gl.uniformMatrix4fv(this.uniforms[name], transpose, matrix);
-
-        return this;
+        return this.setUniform2(this.gl.uniformMatrix4fv, name, transpose, matrix);
     },
 
     /**
      * Removes all external references from this class and deletes the WebGL program from the WebGL context.
+     *
+     * Does not remove this shader from the parent pipeline.
      *
      * @method Phaser.Renderer.WebGL.WebGLShader#destroy
      * @since 3.50.0
@@ -593,10 +984,12 @@ var WebGLShader = new Class({
     {
         this.gl.deleteProgram(this.program);
 
-        this.gl = null;
-        this.program = null;
         this.pipeline = null;
         this.renderer = null;
+        this.gl = null;
+        this.program = null;
+        this.attributes = null;
+        this.uniforms = null;
     }
 
 });

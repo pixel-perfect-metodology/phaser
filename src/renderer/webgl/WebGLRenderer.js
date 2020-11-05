@@ -833,7 +833,7 @@ var WebGLRenderer = new Class({
 
             gl.bindTexture(gl.TEXTURE_2D, tempTexture);
 
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([ 255, 255, 255, 255 ]));
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([ 0, 0, 255, 255 ]));
 
             tempTextures[index] = tempTexture;
 
@@ -868,8 +868,19 @@ var WebGLRenderer = new Class({
         var game = this.game;
         var pipelineManager = this.pipelines;
 
+        var baseSize = game.scale.baseSize;
+
+        this.width = baseSize.width;
+        this.height = baseSize.height;
+
+        //  Set-up pipelines
+
+        //  First, default ones
+        pipelineManager.boot();
+
         var pipelines = game.config.pipeline;
 
+        //  Then, custom ones
         if (pipelines)
         {
             for (var pipelineName in pipelines)
@@ -880,14 +891,10 @@ var WebGLRenderer = new Class({
             }
         }
 
-        pipelineManager.boot();
-
-        var multi = pipelineManager.get(PIPELINE_CONST.MULTI_PIPELINE);
+        //  Set-up default textures, fbo and scissor
 
         this.blankTexture = game.textures.getFrame('__DEFAULT');
         this.whiteTexture = game.textures.getFrame('__WHITE');
-
-        multi.currentFrame = this.whiteTexture;
 
         var gl = this.gl;
 
@@ -897,11 +904,7 @@ var WebGLRenderer = new Class({
 
         game.scale.on(ScaleEvents.RESIZE, this.onResize, this);
 
-        var baseSize = game.scale.baseSize;
-
         this.resize(baseSize.width, baseSize.height);
-
-        pipelineManager.setMulti();
     },
 
     /**
@@ -1448,16 +1451,22 @@ var WebGLRenderer = new Class({
         var gl = this.gl;
         var temp = this.tempTextures;
 
-        var total = (all) ? temp.length : 2;
-
-        for (var i = 0; i < total; i++)
-        {
-            gl.activeTexture(gl.TEXTURE0 + i);
-            gl.bindTexture(gl.TEXTURE_2D, temp[i]);
-        }
-
         if (all)
         {
+            for (var i = 0; i < temp.length; i++)
+            {
+                gl.activeTexture(gl.TEXTURE0 + i);
+                gl.bindTexture(gl.TEXTURE_2D, temp[i]);
+            }
+
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, temp[1]);
+        }
+        else
+        {
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, temp[0]);
+
             gl.activeTexture(gl.TEXTURE1);
             gl.bindTexture(gl.TEXTURE_2D, temp[1]);
         }
@@ -1592,59 +1601,87 @@ var WebGLRenderer = new Class({
     },
 
     /**
-     * Binds a program. If there was another program already bound it will force a pipeline flush.
+     * Binds a shader program.
+     *
+     * If there was a different program already bound it will force a pipeline flush first.
+     *
+     * If the same program given to this method is already set as the current program, no change
+     * will take place and this method will return `false`.
      *
      * @method Phaser.Renderer.WebGL.WebGLRenderer#setProgram
      * @since 3.0.0
      *
      * @param {WebGLProgram} program - The program that needs to be bound.
      *
-     * @return {this} This WebGLRenderer instance.
+     * @return {boolean} `true` if the given program was bound, otherwise `false`.
      */
     setProgram: function (program)
     {
-        var gl = this.gl;
-
         if (program !== this.currentProgram)
         {
             this.flush();
 
-            gl.useProgram(program);
+            this.gl.useProgram(program);
 
             this.currentProgram = program;
+
+            return true;
         }
+
+        return false;
+    },
+
+    /**
+     * Rebinds whatever program `WebGLRenderer.currentProgram` is set as, without
+     * changing anything, or flushing.
+     *
+     * @method Phaser.Renderer.WebGL.WebGLRenderer#resetProgram
+     * @since 3.50.0
+     *
+     * @return {this} This WebGLRenderer instance.
+     */
+    resetProgram: function ()
+    {
+        this.gl.useProgram(this.currentProgram);
 
         return this;
     },
 
     /**
-     * Binds a vertex buffer. If there is a vertex buffer already bound it'll force a pipeline flush.
+     * Binds a vertex buffer.
+     *
+     * If there was a different vertex buffer already bound it will force a pipeline flush first.
+     *
+     * If the same buffer given to this method is already set as the current buffer, no change
+     * will take place and this method will return `false`.
      *
      * @method Phaser.Renderer.WebGL.WebGLRenderer#setVertexBuffer
      * @since 3.0.0
      *
      * @param {WebGLBuffer} vertexBuffer - The buffer that needs to be bound.
      *
-     * @return {this} This WebGLRenderer instance.
+     * @return {boolean} `true` if the given buffer was bound, otherwise `false`.
      */
     setVertexBuffer: function (vertexBuffer)
     {
-        var gl = this.gl;
-
         if (vertexBuffer && vertexBuffer !== this.currentVertexBuffer)
         {
+            var gl = this.gl;
+
             this.flush();
 
             gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
 
             this.currentVertexBuffer = vertexBuffer;
+
+            return true;
         }
 
-        return this;
+        return false;
     },
 
     /**
-     * Bounds a index buffer. If there is a index buffer already bound it'll force a pipeline flush.
+     * Binds an index buffer. If there is an index buffer already bound it'll force a pipeline flush.
      *
      * @method Phaser.Renderer.WebGL.WebGLRenderer#setIndexBuffer
      * @since 3.0.0
@@ -1963,7 +2000,10 @@ var WebGLRenderer = new Class({
      */
     deleteTexture: function (texture, reset)
     {
-        this.gl.deleteTexture(texture);
+        if (texture)
+        {
+            this.gl.deleteTexture(texture);
+        }
 
         if (reset)
         {
@@ -1985,7 +2025,10 @@ var WebGLRenderer = new Class({
      */
     deleteFramebuffer: function (framebuffer)
     {
-        this.gl.deleteFramebuffer(framebuffer);
+        if (framebuffer)
+        {
+            this.gl.deleteFramebuffer(framebuffer);
+        }
 
         return this;
     },
@@ -2002,7 +2045,10 @@ var WebGLRenderer = new Class({
      */
     deleteProgram: function (program)
     {
-        this.gl.deleteProgram(program);
+        if (program)
+        {
+            this.gl.deleteProgram(program);
+        }
 
         return this;
     },
@@ -2042,8 +2088,28 @@ var WebGLRenderer = new Class({
 
         var color = camera.backgroundColor;
 
-        var MultiPipeline = this.pipelines.MULTI_PIPELINE;
+        this.pushScissor(cx, cy, cw, ch);
 
+        if (camera.mask)
+        {
+            this.currentCameraMask.mask = camera.mask;
+            this.currentCameraMask.camera = camera._maskCamera;
+
+            camera.mask.preRenderWebGL(this, camera, camera._maskCamera);
+        }
+
+        if (color.alphaGL > 0)
+        {
+            var pipeline = this.pipelines.setCameraPipeline();
+
+            pipeline.drawFillRect(
+                cx, cy, cw, ch,
+                Utils.getTintFromFloats(color.redGL, color.greenGL, color.blueGL, 1),
+                color.alphaGL
+            );
+        }
+
+        /*
         if (camera.renderToTexture)
         {
             this.flush();
@@ -2091,15 +2157,16 @@ var WebGLRenderer = new Class({
                 camera.mask.preRenderWebGL(this, camera, camera._maskCamera);
             }
 
-            if (color.alphaGL > 0)
-            {
-                MultiPipeline.drawFillRect(
-                    cx, cy, cw , ch,
-                    Utils.getTintFromFloats(color.redGL, color.greenGL, color.blueGL, 1),
-                    color.alphaGL
-                );
-            }
+            // if (color.alphaGL > 0)
+            // {
+            //     MultiPipeline.drawFillRect(
+            //         cx, cy, cw , ch,
+            //         Utils.getTintFromFloats(color.redGL, color.greenGL, color.blueGL, 1),
+            //         color.alphaGL
+            //     );
+            // }
         }
+        */
     },
 
     /**
@@ -2129,7 +2196,8 @@ var WebGLRenderer = new Class({
 
     /**
      * Controls the post-render operations for the given camera.
-     * Renders the foreground camera effects like flash and fading. It resets the current scissor state.
+     *
+     * Renders the foreground camera effects like flash and fading, then resets the current scissor state.
      *
      * @method Phaser.Renderer.WebGL.WebGLRenderer#postRenderCamera
      * @since 3.0.0
@@ -2138,15 +2206,19 @@ var WebGLRenderer = new Class({
      */
     postRenderCamera: function (camera)
     {
-        var multiPipeline = this.pipelines.setMulti();
+        if (camera.flashEffect.isRunning || camera.fadeEffect.isRunning)
+        {
+            var pipeline = this.pipelines.setCameraPipeline();
 
-        camera.flashEffect.postRenderWebGL(multiPipeline, Utils.getTintFromFloats);
-        camera.fadeEffect.postRenderWebGL(multiPipeline, Utils.getTintFromFloats);
+            camera.flashEffect.postRenderWebGL(pipeline, Utils.getTintFromFloats);
+            camera.fadeEffect.postRenderWebGL(pipeline, Utils.getTintFromFloats);
+        }
 
         camera.dirty = false;
 
         this.popScissor();
 
+        /*
         if (camera.renderToTexture)
         {
             multiPipeline.flush();
@@ -2189,6 +2261,7 @@ var WebGLRenderer = new Class({
             //  Force clear the current texture so that items next in the batch (like Graphics) don't try and use it
             this.setBlankTexture(true);
         }
+        */
 
         if (camera.mask)
         {
@@ -2241,8 +2314,6 @@ var WebGLRenderer = new Class({
         this.textureFlush = 0;
 
         this.pipelines.preRender();
-
-        this.pipelines.setMulti();
     },
 
     /**
